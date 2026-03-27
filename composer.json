@@ -1,0 +1,60 @@
+{
+    "name": "3neti/payment-gateway",
+    "description": "Payment Gateway",
+    "type": "library",
+    "license": "proprietary",
+    "authors": [
+        {
+            "name": "Lester Hurtado",
+            "email": "lester@hurtado.ph"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "LBHurtado\\PaymentGateway\\": "src/",
+            "LBHurtado\\PaymentGateway\\Database\\Factories\\": "database/factories/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "LBHurtado\\PaymentGateway\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "LBHurtado\\PaymentGateway\\PaymentGatewayServiceProvider"
+            ]
+        }
+    },
+    "require": {
+        "spatie/laravel-data": "^4.15",
+        "laravel/sanctum": "^4.0",
+        "lorisleiva/laravel-actions": "^2.9",
+        "brick/money": "^0.10.1",
+        "3neti/merchant": "^v1.0",
+        "3neti/laravel-model-channel": "^v1.0",
+        "3neti/wallet": "^v1.0",
+        "3neti/money-issuer": "^v1.0",
+        "propaganistas/laravel-phone": "^6.0",
+        "league/omnipay": "^3.2",
+        "omnipay/common": "^3.1",
+        "php-http/guzzle7-adapter": "^1.0",
+        "php-http/discovery": "^1.14"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.3",
+        "pestphp/pest": "^3.8"
+    },
+    "scripts": {
+        "test": "vendor/bin/pest"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "php-http/discovery": true
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
