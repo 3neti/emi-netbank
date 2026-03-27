@@ -7,7 +7,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use LBHurtado\Contact\Classes\BankAccount;
 use LBHurtado\PaymentGateway\Data\SettlementBanksData;
-use LBHurtado\Voucher\Models\Voucher;
 use Spatie\LaravelData\Data;
 
 class DisburseInputData extends Data
@@ -33,8 +32,12 @@ class DisburseInputData extends Data
         $this->account_number = preg_replace('/[^0-9]/', '', $account_number);
     }
 
+    /**
+     * @deprecated This method is being moved to the voucher package.
+     * Use LBHurtado\EmiCore\Data\PayoutRequestData built in the voucher pipeline instead.
+     */
     public static function fromVoucher(
-        Voucher $voucher,
+        object $voucher,
         ?string $via = null,
         ?float $amount = null,
         ?int $sliceNumber = null,

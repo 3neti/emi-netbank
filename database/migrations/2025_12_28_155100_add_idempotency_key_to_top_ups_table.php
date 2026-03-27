@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('top_ups')) {
+            return;
+        }
+
         Schema::table('top_ups', function (Blueprint $table) {
             $table->string('idempotency_key', 255)->nullable()->after('reference_no');
             $table->timestamp('idempotency_created_at')->nullable()->after('idempotency_key');
@@ -23,6 +27,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('top_ups')) {
+            return;
+        }
+
         Schema::table('top_ups', function (Blueprint $table) {
             $table->dropIndex(['idempotency_key']);
             $table->dropColumn(['idempotency_key', 'idempotency_created_at']);

@@ -27,7 +27,14 @@
             ]
         }
     },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "/Users/rli/PhpstormProjects/redeem-x/monorepo-packages/emi-core"
+        }
+    ],
     "require": {
+        "lbhurtado/emi-core": "@dev",
         "spatie/laravel-data": "^4.15",
         "laravel/sanctum": "^4.0",
         "lorisleiva/laravel-actions": "^2.9",

@@ -3,6 +3,8 @@
 namespace LBHurtado\PaymentGateway\Enums;
 
 /**
+ * @deprecated Use LBHurtado\EmiCore\Enums\PayoutStatus instead.
+ *
  * Generic disbursement status enum
  *
  * Normalizes gateway-specific statuses into a common set of states.

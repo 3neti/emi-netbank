@@ -7,7 +7,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use LBHurtado\Contact\Classes\BankAccount;
 use LBHurtado\PaymentGateway\Data\SettlementBanksData;
-use LBHurtado\Voucher\Models\Voucher;
 use Spatie\LaravelData\Data;
 
 class DisburseInputData extends Data
@@ -22,8 +21,11 @@ class DisburseInputData extends Data
         public string $via
     ) {}
 
+    /**
+     * @deprecated This method is being moved to the voucher package.
+     */
     public static function fromVoucher(
-        Voucher $voucher,
+        object $voucher,
         string $via = 'INSTAPAY',
     ): self {
         Log::debug('[DisburseInputData] fromVoucher beginning', [

@@ -5,7 +5,6 @@ namespace LBHurtado\PaymentGateway\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use LBHurtado\Voucher\Models\Voucher;
 
 class DisbursementAttempt extends Model
 {
@@ -45,9 +44,14 @@ class DisbursementAttempt extends Model
 
     // ── Relationships ──
 
+    /**
+     * @deprecated Use voucher_code string field for lookups instead of this relationship.
+     */
     public function voucher(): BelongsTo
     {
-        return $this->belongsTo(Voucher::class);
+        $voucherClass = config('payment.models.voucher.class', 'LBHurtado\Voucher\Models\Voucher');
+
+        return $this->belongsTo($voucherClass);
     }
 
     public function user(): BelongsTo
