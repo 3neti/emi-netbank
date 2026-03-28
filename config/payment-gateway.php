@@ -1,13 +1,6 @@
 <?php
 
 return [
-    'models' => [
-        // User model for relationships (used by contact package for sender tracking).
-        // Host app should ensure this resolves to the correct model.
-        'user' => class_exists(App\Models\User::class)
-            ? App\Models\User::class
-            : null,
-    ],
     'default' => env('PAYMENT_GATEWAY', 'netbank'),
 
     'drivers' => [
@@ -25,10 +18,6 @@ return [
     |--------------------------------------------------------------------------
     | NetBank Direct Checkout Configuration
     |--------------------------------------------------------------------------
-    |
-    | Configure Direct Checkout (Collection) endpoints and credentials.
-    | This allows users to pay via redirect to their bank/e-wallet apps.
-    |
     */
     'netbank' => [
         'direct_checkout' => [
@@ -41,33 +30,7 @@ return [
         ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Top-Up Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Configure limits and behavior for wallet top-ups.
-    |
-    */
-    'top_up' => [
-        'min_amount' => env('TOP_UP_MIN_AMOUNT', 1),
-        'max_amount' => env('TOP_UP_MAX_AMOUNT', 50000),
-        'reference_prefix' => env('TOP_UP_REFERENCE_PREFIX', 'TOPUP'),
-        'auto_confirm_fake' => env('TOP_UP_AUTO_CONFIRM_FAKE', false),
-    ],
-
     'gateway' => LBHurtado\PaymentGateway\Gateways\Netbank\NetbankPaymentGateway::class,
-
-    /*
-    |--------------------------------------------------------------------------
-    | System Account
-    |--------------------------------------------------------------------------
-    |
-    | The system's main account for receiving payments (top-ups, voucher payments, etc.).
-    | Format: mobile number with area code (e.g., 09173011987)
-    |
-    */
-    'system_account' => env('SYSTEM_ACCOUNT', env('APP_MOBILE')),
 
     /*
     |--------------------------------------------------------------------------

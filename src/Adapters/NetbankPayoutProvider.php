@@ -9,6 +9,7 @@ use LBHurtado\EmiCore\Data\PayoutResultData;
 use LBHurtado\EmiCore\Enums\PayoutStatus;
 use LBHurtado\EmiCore\Enums\SettlementRail;
 use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
+use LBHurtado\PaymentGateway\Contracts\WalletProxy;
 use LBHurtado\PaymentGateway\Data\Disburse\DisburseInputData;
 
 /**
@@ -19,6 +20,7 @@ class NetbankPayoutProvider implements PayoutProvider
 {
     public function __construct(
         protected PaymentGatewayInterface $gateway,
+        protected WalletProxy $walletProxy,
     ) {}
 
     public function disburse(PayoutRequestData $request): PayoutResultData
@@ -35,7 +37,7 @@ class NetbankPayoutProvider implements PayoutProvider
             'mobile' => $request->mobile,
         ]);
 
-        $response = $this->gateway->disburse($this->resolveWallet(), $input);
+        $response = $this->gateway->disburse($this->walletProxy->resolve(), $input);
 
         if ($response === false) {
             return new PayoutResultData(
@@ -79,21 +81,6 @@ class NetbankPayoutProvider implements PayoutProvider
             'REJECTED' => PayoutStatus::FAILED,
             default => PayoutStatus::fromGeneric($status),
         };
-    }
-
-    /**
-     * Resolve the wallet proxy for the gateway call.
-     * Uses config('payment-gateway.wallet_resolver') if set, otherwise falls back to SystemUserResolverService.
-     */
-    protected function resolveWallet(): \Bavix\Wallet\Interfaces\Wallet
-    {
-        $resolverClass = config('payment-gateway.wallet_resolver');
-
-        if ($resolverClass && class_exists($resolverClass)) {
-            return app($resolverClass)->resolve();
-        }
-
-        return app(\LBHurtado\Wallet\Services\SystemUserResolverService::class)->resolve();
     }
 
     public function getRailFee(SettlementRail $rail): int

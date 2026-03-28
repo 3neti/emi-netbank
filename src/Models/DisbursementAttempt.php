@@ -4,14 +4,13 @@ namespace LBHurtado\PaymentGateway\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DisbursementAttempt extends Model
 {
     protected $fillable = [
-        'subject_id',
+        'external_reference_id',
         'user_id',
-        'subject_code',
+        'external_reference_code',
         'amount',
         'currency',
         'mobile',
@@ -41,24 +40,6 @@ class DisbursementAttempt extends Model
         'completed_at' => 'datetime',
         'last_checked_at' => 'datetime',
     ];
-
-    // ── Relationships ──
-
-    /**
-     * Generic subject relationship (e.g. voucher, invoice, etc.)
-     * Configured via config('payment.models.subject.class').
-     */
-    public function subject(): BelongsTo
-    {
-        $subjectClass = config('payment.models.subject.class', 'Illuminate\Database\Eloquent\Model');
-
-        return $this->belongsTo($subjectClass, 'subject_id');
-    }
-
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
 
     // ── Scopes: Status ──
 
@@ -116,9 +97,9 @@ class DisbursementAttempt extends Model
 
     // ── Scopes: Lookup ──
 
-    public function scopeBySubjectCode(Builder $query, string $code): Builder
+    public function scopeByReferenceCode(Builder $query, string $code): Builder
     {
-        return $query->where('subject_code', $code);
+        return $query->where('external_reference_code', $code);
     }
 
     public function scopeByReference(Builder $query, string $reference): Builder
