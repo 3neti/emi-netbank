@@ -14,8 +14,8 @@ class DisburseInputData extends Data
         public string $account_number,
         public string $bank,
         public string $via,
-        public ?int $voucher_id = null,
-        public ?string $voucher_code = null,
+        public ?int $reference_id = null,
+        public ?string $reference_code = null,
         public ?int $user_id = null,
         public ?string $mobile = null,
     ) {

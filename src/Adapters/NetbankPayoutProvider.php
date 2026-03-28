@@ -29,8 +29,8 @@ class NetbankPayoutProvider implements PayoutProvider
             'account_number' => $request->account_number,
             'bank' => $request->bank_code,
             'via' => $request->settlement_rail,
-            'voucher_id' => $request->subject_id ? (int) $request->subject_id : null,
-            'voucher_code' => $request->subject_code,
+            'reference_id' => $request->subject_id ? (int) $request->subject_id : null,
+            'reference_code' => $request->subject_code,
             'user_id' => $request->user_id,
             'mobile' => $request->mobile,
         ]);
