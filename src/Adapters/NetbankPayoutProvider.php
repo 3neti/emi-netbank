@@ -42,6 +42,7 @@ class NetbankPayoutProvider implements PayoutProvider
                 transaction_id: $request->reference,
                 uuid: Str::uuid()->toString(),
                 status: PayoutStatus::FAILED,
+                provider: 'netbank',
             );
         }
 
@@ -49,6 +50,7 @@ class NetbankPayoutProvider implements PayoutProvider
             transaction_id: $response->transaction_id,
             uuid: $response->uuid,
             status: $this->mapStatus($response->status),
+            provider: 'netbank',
         );
     }
 
@@ -60,6 +62,7 @@ class NetbankPayoutProvider implements PayoutProvider
             transaction_id: $transactionId,
             uuid: Str::uuid()->toString(),
             status: $this->mapStatus($result['status']),
+            provider: 'netbank',
             metadata: $result['raw'] ?? null,
         );
     }
@@ -80,10 +83,16 @@ class NetbankPayoutProvider implements PayoutProvider
 
     /**
      * Resolve the wallet proxy for the gateway call.
-     * Override this method or bind a custom resolver to change wallet resolution.
+     * Uses config('payment-gateway.wallet_resolver') if set, otherwise falls back to SystemUserResolverService.
      */
     protected function resolveWallet(): \Bavix\Wallet\Interfaces\Wallet
     {
+        $resolverClass = config('payment-gateway.wallet_resolver');
+
+        if ($resolverClass && class_exists($resolverClass)) {
+            return app($resolverClass)->resolve();
+        }
+
         return app(\LBHurtado\Wallet\Services\SystemUserResolverService::class)->resolve();
     }
 

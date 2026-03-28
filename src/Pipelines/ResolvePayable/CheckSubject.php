@@ -8,13 +8,13 @@ use LBHurtado\PaymentGateway\Data\Netbank\Deposit\Helpers\RecipientAccountNumber
 
 /**
  * Resolves a payable entity from the recipient account number.
- * Uses config('payment.models.voucher') to avoid hard coupling to any specific model.
+ * Uses config('payment.models.subject') to avoid hard coupling to any specific model.
  */
-class CheckVoucher
+class CheckSubject
 {
     public function handle(RecipientAccountNumberData $recipientAccountNumberData, Closure $next)
     {
-        $config = config('payment.models.voucher');
+        $config = config('payment.models.subject');
         if (! $config || ! class_exists($config['class'] ?? '')) {
             return $next($recipientAccountNumberData);
         }
