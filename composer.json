@@ -1,6 +1,6 @@
 {
-    "name": "3neti/payment-gateway",
-    "description": "Payment Gateway",
+    "name": "3neti/emi-netbank",
+    "description": "NetBank EMI provider adapter for emi-core",
     "type": "library",
     "license": "proprietary",
     "authors": [
