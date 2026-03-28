@@ -2,9 +2,7 @@
 
 namespace LBHurtado\PaymentGateway\Gateways\Netbank\Traits;
 
-use Bavix\Wallet\Interfaces\Wallet;
 use Illuminate\Support\Facades\Log;
-use LBHurtado\PaymentGateway\Contracts\WalletResolver;
 use LBHurtado\PaymentGateway\Data\ConfirmedDepositData;
 use LBHurtado\PaymentGateway\Data\Netbank\Deposit\DepositResponseData;
 use LBHurtado\PaymentGateway\Data\Netbank\Deposit\Helpers\RecipientAccountNumberData;
@@ -26,8 +24,6 @@ trait CanConfirmDeposit
             $response->recipientAccountNumber
         );
 
-        $wallet = app(WalletResolver::class)->resolve($dto);
-
         return new ConfirmedDepositData(
             reference_code: $dto->referenceCode,
             amount: (float) $response->amount,
@@ -39,7 +35,6 @@ trait CanConfirmDeposit
             transfer_type: $response->transferType,
             reference_number: $response->referenceNumber,
             registration_time: $response->registrationTime,
-            wallet: $wallet,
             raw_payload: $response->toArray(),
         );
     }

@@ -2,12 +2,11 @@
 
 namespace LBHurtado\PaymentGateway\Data;
 
-use Bavix\Wallet\Interfaces\Wallet;
 use Spatie\LaravelData\Data;
 
 /**
  * Normalized deposit confirmation result.
- * Provider validates and parses the deposit, host app decides what effects to apply.
+ * Provider parses the deposit; host app resolves wallet and applies effects.
  */
 class ConfirmedDepositData extends Data
 {
@@ -22,7 +21,6 @@ class ConfirmedDepositData extends Data
         public string $transfer_type,
         public string $reference_number,
         public string $registration_time,
-        public Wallet $wallet,
         public array $raw_payload,
     ) {}
 }

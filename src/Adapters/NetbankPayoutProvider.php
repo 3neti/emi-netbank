@@ -31,8 +31,8 @@ class NetbankPayoutProvider implements PayoutProvider
             'account_number' => $request->account_number,
             'bank' => $request->bank_code,
             'via' => $request->settlement_rail,
-            'reference_id' => $request->subject_id ? (int) $request->subject_id : null,
-            'reference_code' => $request->subject_code,
+            'reference_id' => $request->external_id ? (int) $request->external_id : null,
+            'reference_code' => $request->external_code,
             'user_id' => $request->user_id,
             'mobile' => $request->mobile,
         ]);
@@ -85,9 +85,8 @@ class NetbankPayoutProvider implements PayoutProvider
 
     public function getRailFee(SettlementRail $rail): int
     {
-        // Convert emi-core SettlementRail to payment-gateway SettlementRail
-        $pgRail = \LBHurtado\PaymentGateway\Enums\SettlementRail::from($rail->value);
+        $railsConfig = config('omnipay.gateways.netbank.options.rails', []);
 
-        return $this->gateway->getRailFee($pgRail);
+        return $railsConfig[$rail->value]['fee'] ?? 0;
     }
 }
