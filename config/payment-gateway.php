@@ -2,9 +2,11 @@
 
 return [
     'models' => [
+        // User model for relationships (used by contact package for sender tracking).
+        // Host app should ensure this resolves to the correct model.
         'user' => class_exists(App\Models\User::class)
             ? App\Models\User::class
-            : LBHurtado\PaymentGateway\Tests\Models\User::class,
+            : null,
     ],
     'default' => env('PAYMENT_GATEWAY', 'netbank'),
 

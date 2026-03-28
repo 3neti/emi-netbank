@@ -31,11 +31,6 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         );
 
         $this->mergeConfigFrom(
-            __DIR__.'/../config/payment.php',
-            'payment'
-        );
-
-        $this->mergeConfigFrom(
             __DIR__.'/../config/omnipay.php',
             'omnipay'
         );
@@ -92,7 +87,6 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../config/disbursement.php' => config_path('disbursement.php'),
             __DIR__.'/../config/payment-gateway.php' => config_path('payment-gateway.php'),
-            __DIR__.'/../config/payment.php' => config_path('payment.php'),
             __DIR__.'/../config/omnipay.php' => config_path('omnipay.php'),
         ], 'config');
 

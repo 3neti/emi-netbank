@@ -4,9 +4,9 @@ namespace LBHurtado\PaymentGateway\Gateways\Netbank\Traits;
 
 use Bavix\Wallet\Interfaces\Wallet;
 use Illuminate\Support\Facades\Log;
+use LBHurtado\PaymentGateway\Contracts\WalletResolver;
 use LBHurtado\PaymentGateway\Data\Netbank\Deposit\DepositResponseData;
 use LBHurtado\PaymentGateway\Data\Netbank\Deposit\Helpers\RecipientAccountNumberData;
-use LBHurtado\PaymentGateway\Services\ResolvePayable;
 use LBHurtado\Wallet\Actions\TopupWalletAction;
 use LBHurtado\Wallet\Events\DepositConfirmed;
 use LBHurtado\Wallet\Jobs\BroadcastBalanceUpdated;
@@ -23,7 +23,7 @@ trait CanConfirmDeposit
         );
 
         try {
-            $wallet = app(ResolvePayable::class)->execute($dto);
+            $wallet = app(WalletResolver::class)->resolve($dto);
         } catch (\Throwable $e) {
             Log::error('Could not resolve recipient to a wallet', [
                 'error' => $e->getMessage(),
