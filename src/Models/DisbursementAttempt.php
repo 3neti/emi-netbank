@@ -9,9 +9,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class DisbursementAttempt extends Model
 {
     protected $fillable = [
-        'voucher_id',
+        'subject_id',
         'user_id',
-        'voucher_code',
+        'subject_code',
         'amount',
         'currency',
         'mobile',
@@ -45,13 +45,14 @@ class DisbursementAttempt extends Model
     // ── Relationships ──
 
     /**
-     * @deprecated Use voucher_code string field for lookups instead of this relationship.
+     * Generic subject relationship (e.g. voucher, invoice, etc.)
+     * Configured via config('payment.models.subject.class').
      */
-    public function voucher(): BelongsTo
+    public function subject(): BelongsTo
     {
-        $voucherClass = config('payment.models.voucher.class', 'LBHurtado\Voucher\Models\Voucher');
+        $subjectClass = config('payment.models.subject.class', 'Illuminate\Database\Eloquent\Model');
 
-        return $this->belongsTo($voucherClass);
+        return $this->belongsTo($subjectClass, 'subject_id');
     }
 
     public function user(): BelongsTo
@@ -115,9 +116,9 @@ class DisbursementAttempt extends Model
 
     // ── Scopes: Lookup ──
 
-    public function scopeByVoucherCode(Builder $query, string $code): Builder
+    public function scopeBySubjectCode(Builder $query, string $code): Builder
     {
-        return $query->where('voucher_code', $code);
+        return $query->where('subject_code', $code);
     }
 
     public function scopeByReference(Builder $query, string $reference): Builder

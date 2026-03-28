@@ -86,9 +86,9 @@ class OmnipayPaymentGateway implements PaymentGatewayInterface
 
         // Log disbursement attempt (for audit trail)
         $attempt = DisbursementAttempt::create([
-            'voucher_id' => $data['voucher_id'] ?? null,
+            'subject_id' => $data['voucher_id'] ?? $data['subject_id'] ?? null,
             'user_id' => $data['user_id'] ?? null,
-            'voucher_code' => $data['voucher_code'] ?? null,
+            'subject_code' => $data['voucher_code'] ?? $data['subject_code'] ?? null,
             'amount' => $amount,
             'currency' => $currency,
             'mobile' => $data['mobile'] ?? null,

@@ -35,11 +35,7 @@ class NetbankPayoutProvider implements PayoutProvider
             'mobile' => $request->mobile,
         ]);
 
-        // Use a null-wallet proxy — the actual wallet is handled by the calling pipeline
-        $response = $this->gateway->disburse(
-            app(\LBHurtado\Wallet\Services\SystemUserResolverService::class)->resolve(),
-            $input
-        );
+        $response = $this->gateway->disburse($this->resolveWallet(), $input);
 
         if ($response === false) {
             return new PayoutResultData(
@@ -52,10 +48,7 @@ class NetbankPayoutProvider implements PayoutProvider
         return new PayoutResultData(
             transaction_id: $response->transaction_id,
             uuid: $response->uuid,
-            status: PayoutStatus::fromGateway(
-                config('payment-gateway.default', 'netbank'),
-                $response->status
-            ),
+            status: $this->mapStatus($response->status),
         );
     }
 
@@ -66,9 +59,32 @@ class NetbankPayoutProvider implements PayoutProvider
         return new PayoutResultData(
             transaction_id: $transactionId,
             uuid: Str::uuid()->toString(),
-            status: PayoutStatus::fromGateway('netbank', $result['status']),
+            status: $this->mapStatus($result['status']),
             metadata: $result['raw'] ?? null,
         );
+    }
+
+    /**
+     * Map provider-specific status string to normalized PayoutStatus.
+     */
+    private function mapStatus(string $status): PayoutStatus
+    {
+        return match (strtoupper(str_replace(' ', '', $status))) {
+            'PENDING' => PayoutStatus::PENDING,
+            'FORSETTLEMENT' => PayoutStatus::PROCESSING,
+            'SETTLED' => PayoutStatus::COMPLETED,
+            'REJECTED' => PayoutStatus::FAILED,
+            default => PayoutStatus::fromGeneric($status),
+        };
+    }
+
+    /**
+     * Resolve the wallet proxy for the gateway call.
+     * Override this method or bind a custom resolver to change wallet resolution.
+     */
+    protected function resolveWallet(): \Bavix\Wallet\Interfaces\Wallet
+    {
+        return app(\LBHurtado\Wallet\Services\SystemUserResolverService::class)->resolve();
     }
 
     public function getRailFee(SettlementRail $rail): int
