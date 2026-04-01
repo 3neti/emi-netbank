@@ -2,12 +2,10 @@
 
 namespace LBHurtado\PaymentGateway\Omnipay\Netbank\Traits;
 
-use Omnipay\Common\Exception\InvalidRequestException;
-
 use LBHurtado\EmiCore\Enums\SettlementRail as EmiSettlementRail;
 use LBHurtado\PaymentGateway\Enums\SettlementRail;
-
-use LBHurtado\MoneyIssuer\Support\BankRegistry;
+use Omnipay\Common\Exception\InvalidRequestException;
+use LBHurtado\EmiCore\Contracts\BankRegistryContract;
 
 /**
  * ValidatesSettlementRail Trait
@@ -33,12 +31,11 @@ trait ValidatesSettlementRail
     ): void {
         // 1. Check if bank supports the rail
 
-        $bankRegistry = app(BankRegistry::class);
+        $bankRegistry = app(BankRegistryContract::class);
         $emiRail = EmiSettlementRail::from($rail->value);
 
         if (! $bankRegistry->supportsRail($bankCode, $emiRail)) {
-            $bankInfo = $bankRegistry->find($bankCode);
-            $bankName = $bankInfo['full_name'] ?? $bankCode;
+            $bankName = $bankRegistry->getBankName($bankCode) ?: $bankCode;
 
             throw new InvalidRequestException(
                 "Bank '{$bankName}' ({$bankCode}) does not support {$rail->value} settlement rail"
