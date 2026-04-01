@@ -2,8 +2,9 @@
 
 namespace LBHurtado\PaymentGateway\Console\Commands;
 
-use LBHurtado\MoneyIssuer\Support\BankRegistry;
+use LBHurtado\EmiCore\Enums\SettlementRail as EmiSettlementRail;
 use LBHurtado\PaymentGateway\Enums\SettlementRail;
+use LBHurtado\MoneyIssuer\Support\BankRegistry;
 
 /**
  * Test disbursement via Omnipay gateway
@@ -75,7 +76,9 @@ class TestDisbursementCommand extends TestOmnipayCommand
             $isEMI = $bankRegistry->isEMI($bankCode);
 
             // Check if bank supports rail
-            if (! $bankRegistry->supportsRail($bankCode, $rail)) {
+            $emiRail = EmiSettlementRail::from($rail->value);
+
+            if (! $bankRegistry->supportsRail($bankCode, $emiRail)) {
                 $this->error("{$bankName} does not support {$railName}.");
                 $supportedRails = array_keys($bankRegistry->supportedSettlementRails($bankCode));
                 if ($supportedRails) {

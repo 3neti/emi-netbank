@@ -179,6 +179,20 @@ class SettlementRailValidationTest extends TestCase
         $this->expectException(InvalidRequestException::class);
         $this->expectExceptionMessageMatches('/Gateway does not support PESONET/');
 
+        $bankRegistry = \Mockery::mock(\LBHurtado\MoneyIssuer\Support\BankRegistry::class);
+
+        $bankRegistry->shouldReceive('supportsRail')
+            ->once()
+            ->andReturn(true);
+
+        $bankRegistry->shouldReceive('find')
+            ->zeroOrMoreTimes()
+            ->andReturn([
+                'full_name' => 'Mock PESONET Bank',
+            ]);
+
+        app()->instance(\LBHurtado\MoneyIssuer\Support\BankRegistry::class, $bankRegistry);
+
         $request = $gateway->disburse([
             'amount' => 100000 * 100,
             'accountNumber' => '1234567890',

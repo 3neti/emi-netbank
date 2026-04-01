@@ -2,21 +2,24 @@
 
 namespace LBHurtado\PaymentGateway\Gateways\Omnipay;
 
-use Bavix\Wallet\Interfaces\Wallet;
-use Bavix\Wallet\Models\Transaction;
-use Brick\Money\Money;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use LBHurtado\MoneyIssuer\Support\BankRegistry;
+use LBHurtado\PaymentGateway\Gateways\Netbank\Traits\CanConfirmDeposit;
+use LBHurtado\PaymentGateway\Data\Disburse\DisburseResponseData;
 use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
 use LBHurtado\PaymentGateway\Data\Disburse\DisburseInputData;
-use LBHurtado\PaymentGateway\Data\Disburse\DisburseResponseData;
-use LBHurtado\PaymentGateway\Enums\SettlementRail;
-use LBHurtado\PaymentGateway\Gateways\Netbank\Traits\CanConfirmDeposit;
-use LBHurtado\PaymentGateway\Models\DisbursementAttempt;
 use LBHurtado\PaymentGateway\Omnipay\Support\OmnipayFactory;
+use LBHurtado\PaymentGateway\Models\DisbursementAttempt;
+
+use LBHurtado\EmiCore\Enums\SettlementRail as EmiSettlementRail;
+use LBHurtado\PaymentGateway\Enums\SettlementRail;
+
 use LBHurtado\Wallet\Events\DisbursementConfirmed;
+use LBHurtado\MoneyIssuer\Support\BankRegistry;
 use Omnipay\Common\GatewayInterface;
+use Bavix\Wallet\Models\Transaction;
+use Illuminate\Support\Facades\Log;
+use Bavix\Wallet\Interfaces\Wallet;
+use Illuminate\Support\Facades\DB;
+use Brick\Money\Money;
 
 /**
  * Omnipay-based payment gateway adapter.
@@ -105,7 +108,9 @@ class OmnipayPaymentGateway implements PaymentGatewayInterface
         // Validate settlement rail
         try {
             $rail = SettlementRail::from($data['via']);
-            $this->validateBankSupportsRail($data['bank'], $rail);
+            $emiRail = EmiSettlementRail::from($rail->value);
+
+            $this->validateBankSupportsRail($data['bank'], $emiRail);
         } catch (\Throwable $e) {
             Log::error('[OmnipayPaymentGateway] Settlement rail validation failed', [
                 'error' => $e->getMessage(),
@@ -465,11 +470,11 @@ class OmnipayPaymentGateway implements PaymentGatewayInterface
      * Validate that bank supports the selected settlement rail.
      *
      * @param  string  $bankCode  SWIFT BIC code
-     * @param  SettlementRail  $rail  Settlement rail
+     * @param  EmiSettlementRail  $rail  Settlement rail
      *
      * @throws \InvalidArgumentException If bank doesn't support rail
      */
-    protected function validateBankSupportsRail(string $bankCode, SettlementRail $rail): void
+    protected function validateBankSupportsRail(string $bankCode, EmiSettlementRail $rail): void
     {
         if (! $this->bankRegistry->supportsRail($bankCode, $rail)) {
             throw new \InvalidArgumentException(
