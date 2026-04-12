@@ -33,7 +33,7 @@
         "laravel/sanctum": "^4.0",
         "lorisleiva/laravel-actions": "^2.9",
         "brick/money": "^0.10.1",
-        "3neti/merchant": "^v1.0",
+        "3neti/merchant": "^v1.1",
         "3neti/laravel-model-channel": "^v1.0",
         "3neti/wallet": "^v1.0",
         "3neti/money-issuer": "^v1.0",
