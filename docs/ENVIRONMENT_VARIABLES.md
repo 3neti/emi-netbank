@@ -15,6 +15,43 @@ This document provides a comprehensive reference for all environment variables u
 
 ## NetBank Gateway
 
+### Funding and Standing QR Ph Addresses
+
+The funding adapter uses a 16-digit VCA profile: a five-digit NetBank alias plus an eleven-digit reference.
+
+```bash
+NETBANK_FUNDING_API_URL=https://api.netbank.ph
+NETBANK_FUNDING_TOKEN_URL=https://auth.netbank.ph/oauth2/token
+NETBANK_FUNDING_CLIENT_ID=provider-issued-client-id
+NETBANK_FUNDING_CLIENT_SECRET=provider-issued-client-secret
+NETBANK_FUNDING_CORPORATE_ACCOUNT_NUMBER=provider-issued-account-number
+NETBANK_FUNDING_CORPORATE_ACCOUNT_NAME="Registered account name"
+NETBANK_FUNDING_VCA_ALIAS=91500
+NETBANK_FUNDING_REFERENCE_KEY=dedicated-provider-request-reference-key
+NETBANK_FUNDING_QR_ENDPOINT=https://api.netbank.ph/v1/qrph/generate
+NETBANK_FUNDING_QR_MERCHANT_NAME="X Change"
+NETBANK_FUNDING_QR_MERCHANT_CITY=Manila
+```
+
+Standing-address derivation:
+
+```bash
+# Local/development/testing default:
+NETBANK_FUNDING_STANDING_ADDRESS_SCHEME=netbank-mobile-v1
+
+# Production requirement:
+NETBANK_FUNDING_STANDING_ADDRESS_SCHEME=netbank-account-hmac-v2
+NETBANK_FUNDING_VCA_REFERENCE_LENGTH=11
+NETBANK_FUNDING_STANDING_HMAC_KEY_ID=v2-2026-01
+NETBANK_FUNDING_STANDING_HMAC_KEY=base64:<dedicated-secret-of-at-least-32-bytes>
+```
+
+`netbank-mobile-v1` uses a verified `09XXXXXXXXX` mobile as the readable eleven-digit suffix. It is convenient for local seeded users, but exposes a correlatable identifier and cannot safely represent multiple Accounts that share one mobile. Production rejects it.
+
+`netbank-account-hmac-v2` uses a purpose-separated HMAC over the immutable Account reference and a persisted collision counter. Its key is dedicated to this derivation domain and never falls back to `APP_KEY`. Keep the key stable in managed secret storage. A new key affects only new bindings because consumers must persist and reopen the exact issued address.
+
+`NETBANK_FUNDING_VCA_ALIAS_TOKEN` is required by registered one-time VCA/Funding Intent operations. It is not required to render a shared reusable static QR for an already-routable 16-digit funding address.
+
 ### Authentication (Required)
 
 These credentials are provided by NetBank when you register for API access.

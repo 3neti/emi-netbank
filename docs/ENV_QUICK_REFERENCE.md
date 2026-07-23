@@ -8,8 +8,8 @@ Your `.env` file is **complete** with all required variables. This is your curre
 
 ```bash
 # Authentication
-NETBANK_CLIENT_ID=6mh9Pu6JHVQgj0PsotH6Zyob
-NETBANK_CLIENT_SECRET=6oL5wM07lCKzQo0HRl3NJRMS1YdOCPnzhbdBUq38u9rfrtOu
+NETBANK_CLIENT_ID=provider-issued-client-id
+NETBANK_CLIENT_SECRET=provider-issued-client-secret
 
 # API Endpoints
 NETBANK_TOKEN_ENDPOINT=https://auth.netbank.ph/oauth2/token
@@ -23,6 +23,16 @@ NETBANK_TEST_MODE=true  ⚠️ CRITICAL for safety
 NETBANK_CLIENT_ALIAS=91500
 NETBANK_SOURCE_ACCOUNT_NUMBER=113-001-00001-9
 NETBANK_SENDER_CUSTOMER_ID=90627
+
+# Standing Account Funding Address
+# Local/development/testing:
+NETBANK_FUNDING_STANDING_ADDRESS_SCHEME=netbank-mobile-v1
+NETBANK_FUNDING_VCA_REFERENCE_LENGTH=11
+
+# Production (store the key in managed secrets):
+# NETBANK_FUNDING_STANDING_ADDRESS_SCHEME=netbank-account-hmac-v2
+# NETBANK_FUNDING_STANDING_HMAC_KEY_ID=v2-2026-01
+# NETBANK_FUNDING_STANDING_HMAC_KEY=base64:<dedicated-secret-of-at-least-32-bytes>
 
 # Sender Details (KYC)
 NETBANK_SENDER_ADDRESS_ADDRESS1="Salcedo Village"
