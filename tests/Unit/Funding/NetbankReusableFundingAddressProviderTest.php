@@ -111,7 +111,11 @@ it('returns only sanitized incoming observations for the exact reusable VCA', fu
     Http::assertSent(fn (Request $request): bool => str_contains(
         $request->url(),
         '/v1/vca/'.$fundingAddress.'/transactions?',
-    ) && $request->data()['account_number'] === '113001000019');
+    ) && $request->data() === [
+        'account_number' => '113001000019',
+        'limit' => 100,
+        'offset' => 0,
+    ]);
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/qrph/generate'));
 });
 

@@ -133,8 +133,6 @@ class NetbankFundingApiClient
     {
         $response = $this->api()->get('/v1/vca/'.rawurlencode($vcaNumber).'/transactions', [
             'account_number' => $accountNumber ?? $this->requiredConfig('corporate_account_number'),
-            'start_date' => now()->subDays((int) config('payment-gateway.netbank.funding.verification_lookback_days', 7))->format('Y-m-d'),
-            'end_date' => now()->addDay()->format('Y-m-d'),
             'limit' => 100,
             'offset' => 0,
         ]);
