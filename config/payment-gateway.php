@@ -32,10 +32,12 @@ return [
             'vca_alias' => env('NETBANK_FUNDING_VCA_ALIAS', env('NETBANK_CLIENT_ALIAS')),
             'vca_alias_token' => env('NETBANK_FUNDING_VCA_ALIAS_TOKEN'),
             'reference_key' => env('NETBANK_FUNDING_REFERENCE_KEY', env('APP_KEY')),
-            'qr_endpoint' => env('NETBANK_FUNDING_QR_ENDPOINT', env('NETBANK_QR_ENDPOINT')),
-            'qr_merchant_name' => env('NETBANK_FUNDING_QR_MERCHANT_NAME'),
-            'qr_merchant_city' => env('NETBANK_FUNDING_QR_MERCHANT_CITY'),
-            'qr_purpose' => env('NETBANK_FUNDING_QR_PURPOSE', 'Account funding'),
+            'qr_endpoint' => env(
+                'NETBANK_FUNDING_QR_ENDPOINT',
+                env('NETBANK_QR_ENDPOINT', 'https://api.netbank.ph/v1/qrph/generate')
+            ),
+            'qr_merchant_name' => env('NETBANK_FUNDING_QR_MERCHANT_NAME', 'X Change'),
+            'qr_merchant_city' => env('NETBANK_FUNDING_QR_MERCHANT_CITY', 'Manila'),
             'qr_resolution' => env('NETBANK_FUNDING_QR_RESOLUTION', 480),
             'pre_transaction_validation_enabled' => env('NETBANK_FUNDING_PRE_TRANSACTION_VALIDATION_ENABLED', true),
             'exact_limits_enabled' => env('NETBANK_FUNDING_EXACT_LIMITS_ENABLED', true),

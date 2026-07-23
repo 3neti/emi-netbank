@@ -70,7 +70,6 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
             vcaNumber: $vcaNumber,
             amountMinor: $request->amountMinor,
             currency: $currency,
-            reference: $request->fundingReference,
         );
 
         return new FundingInstructionsData(
@@ -251,7 +250,6 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
             'qr_endpoint',
             'qr_merchant_name',
             'qr_merchant_city',
-            'qr_purpose',
         ] as $key) {
             $this->requiredConfig($key);
         }

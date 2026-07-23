@@ -79,7 +79,6 @@ class NetbankFundingApiClient
         string $vcaNumber,
         int $amountMinor,
         string $currency,
-        string $reference,
     ): string {
         $response = $this->api()->post($this->requiredConfig('qr_endpoint'), [
             'merchant_name' => $this->requiredConfig('qr_merchant_name'),
@@ -88,11 +87,9 @@ class NetbankFundingApiClient
             'qr_transaction_type' => 'P2M',
             'destination_account' => $vcaNumber,
             'resolution' => (int) config('payment-gateway.netbank.funding.qr_resolution', 480),
-            'purpose' => $this->requiredConfig('qr_purpose'),
-            'reference_id' => $reference,
             'amount' => [
                 'cur' => $currency,
-                'num' => number_format($amountMinor / 100, 2, '.', ''),
+                'num' => (string) $amountMinor,
             ],
         ]);
 

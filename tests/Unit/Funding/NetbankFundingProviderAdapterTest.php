@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
@@ -37,10 +38,9 @@ beforeEach(function () {
         'vca_alias' => '91500',
         'vca_alias_token' => 'configured-alias-token',
         'reference_key' => 'funding-reference-key',
-        'qr_endpoint' => 'https://api.netbank.test/v1/qr/generate',
+        'qr_endpoint' => 'https://api.netbank.test/v1/qrph/generate',
         'qr_merchant_name' => 'X Change',
         'qr_merchant_city' => 'Manila',
-        'qr_purpose' => 'Account funding',
         'qr_resolution' => 480,
         'pre_transaction_validation_enabled' => true,
         'exact_limits_enabled' => true,
@@ -55,6 +55,40 @@ beforeEach(function () {
 
 afterEach(function () {
     CarbonImmutable::setTestNow();
+});
+
+it('provides known-good NetBank QR defaults', function () {
+    $repository = Env::getRepository();
+    $keys = [
+        'NETBANK_FUNDING_QR_ENDPOINT',
+        'NETBANK_QR_ENDPOINT',
+        'NETBANK_FUNDING_QR_MERCHANT_NAME',
+        'NETBANK_FUNDING_QR_MERCHANT_CITY',
+    ];
+    $original = collect($keys)->mapWithKeys(
+        fn (string $key): array => [$key => $repository->get($key)],
+    );
+
+    foreach ($keys as $key) {
+        $repository->clear($key);
+    }
+
+    try {
+        $packageConfig = require dirname(__DIR__, 3).'/config/payment-gateway.php';
+
+        expect(data_get($packageConfig, 'netbank.funding.qr_endpoint'))
+            ->toBe('https://api.netbank.ph/v1/qrph/generate')
+            ->and(data_get($packageConfig, 'netbank.funding.qr_merchant_name'))
+            ->toBe('X Change')
+            ->and(data_get($packageConfig, 'netbank.funding.qr_merchant_city'))
+            ->toBe('Manila');
+    } finally {
+        foreach ($original as $key => $value) {
+            if (is_string($value)) {
+                $repository->set($key, $value);
+            }
+        }
+    }
 });
 
 it('registers as a provider-neutral funding adapter', function () {
@@ -73,7 +107,7 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
         ]),
         'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
         'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
-        'https://api.netbank.test/v1/qr/generate' => Http::response([
+        'https://api.netbank.test/v1/qrph/generate' => Http::response([
             'qr_code' => validPngBase64(),
         ]),
     ]);
@@ -134,7 +168,7 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
             ],
         ]);
 
-    Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/qr/generate'
+    Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/qrph/generate'
         && $httpRequest->data() === [
             'merchant_name' => 'X Change',
             'merchant_city' => 'Manila',
@@ -142,15 +176,13 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
             'qr_transaction_type' => 'P2M',
             'destination_account' => $instructions->providerReference,
             'resolution' => 480,
-            'purpose' => 'Account funding',
-            'reference_id' => 'FND-01K123456789',
-            'amount' => ['cur' => 'PHP', 'num' => '250.00'],
+            'amount' => ['cur' => 'PHP', 'num' => '25000'],
         ]);
 
     Http::fake([
         'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
         'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
-        'https://api.netbank.test/v1/qr/generate' => Http::response([
+        'https://api.netbank.test/v1/qrph/generate' => Http::response([
             'qr_code' => validPngBase64(),
         ]),
     ]);
@@ -168,7 +200,7 @@ it('uses a dedicated destination without reading shared routing values', functio
         ]),
         'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
         'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
-        'https://api.netbank.test/v1/qr/generate' => Http::response([
+        'https://api.netbank.test/v1/qrph/generate' => Http::response([
             'qr_code' => validPngBase64(),
         ]),
     ]);
@@ -225,7 +257,7 @@ it('fails safely when NetBank does not return a valid base64 png', function (mix
         ]),
         'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
         'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
-        'https://api.netbank.test/v1/qr/generate' => Http::response([
+        'https://api.netbank.test/v1/qrph/generate' => Http::response([
             'qr_code' => $qrCode,
             'secret' => 'must-not-leak',
         ]),
@@ -262,7 +294,7 @@ it('reuses the deterministic VCA when QR issuance is retried', function () {
             return Http::response(['access_token' => 'access-token']);
         }
 
-        if ($request->url() === 'https://api.netbank.test/v1/qr/generate') {
+        if ($request->url() === 'https://api.netbank.test/v1/qrph/generate') {
             $qrAttempts++;
 
             return $qrAttempts === 1
@@ -286,7 +318,7 @@ it('reuses the deterministic VCA when QR issuance is retried', function () {
 
     $instructions = app(NetbankFundingProviderAdapter::class)->createFundingInstructions($request);
     $destinations = collect(Http::recorded())
-        ->filter(fn (array $record): bool => $record[0]->url() === 'https://api.netbank.test/v1/qr/generate')
+        ->filter(fn (array $record): bool => $record[0]->url() === 'https://api.netbank.test/v1/qrph/generate')
         ->map(fn (array $record): string => (string) $record[0]['destination_account'])
         ->values()
         ->all();
@@ -316,6 +348,7 @@ it('requires every NetBank QR funding readiness field', function (string $key) {
     'corporate_account_name',
     'vca_alias',
     'vca_alias_token',
+    'reference_key',
     'qr_endpoint',
     'qr_merchant_name',
     'qr_merchant_city',
