@@ -7,6 +7,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
+use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookReceiptData;
@@ -127,6 +128,60 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
     expect($reissued->providerReference)->toBe($instructions->providerReference);
 });
 
+it('uses a dedicated destination without reading shared routing values', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response([
+            'access_token' => 'access-token',
+            'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
+        'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
+    ]);
+
+    $request = new FundingInstructionRequestData(
+        provider: 'netbank',
+        fundingReference: 'FND-DEDICATED-01',
+        amountMinor: 50_000,
+        currency: 'PHP',
+        accountReference: 'wallet:dedicated',
+        destination: dedicatedDestination(),
+    );
+
+    $instructions = app(NetbankFundingProviderAdapter::class)->createFundingInstructions($request);
+
+    expect($instructions->providerReference)->toStartWith('54321')
+        ->and($instructions->displayData['account_name'])->toBe('Dedicated Treasury');
+
+    Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/vca/pre-transaction/register'
+        && $httpRequest->data()['vca_alias_token'] === 'dedicated-alias-token');
+
+    Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/vca/create'
+        && $httpRequest->data()['account_number'] === '991100001234');
+});
+
+it('generates a VCA alias token for an explicit account and alias', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response([
+            'access_token' => 'access-token',
+            'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/vca/pre-transaction/token' => Http::response([
+            'vca_alias_token' => 'generated-write-only-token',
+        ]),
+    ]);
+
+    $token = app(\LBHurtado\PaymentGateway\Funding\NetbankFundingApiClient::class)
+        ->generateAliasToken('991100001234', '54321');
+
+    expect($token)->toBe('generated-write-only-token');
+
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.netbank.test/v1/vca/pre-transaction/token'
+        && $request->data() === [
+            'vca_alias' => '54321',
+            'account_number' => '991100001234',
+        ]);
+});
+
 it('treats an authenticated webhook as a wake-up hint without trusting its body', function () {
     $adapter = app(NetbankFundingProviderAdapter::class);
     $request = webhookRequest(
@@ -199,6 +254,25 @@ it('verifies a settled incoming credit from authoritative VCA history', function
         && $request->method() === 'GET'
         && $request->data()['account_number'] === '113001000019'
         && $request->data()['limit'] === 100);
+});
+
+it('verifies dedicated funding against the snapshotted corporate account', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [netbankTransaction()],
+        ]),
+    ]);
+
+    $verification = verification();
+    $verification->destination = dedicatedDestination();
+    $observation = app(NetbankFundingProviderAdapter::class)->verifyFunding($verification);
+
+    expect($observation->providerAccountReference)
+        ->toBe('sha256:'.hash('sha256', '991100001234'));
+
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/transactions?')
+        && $request->data()['account_number'] === '991100001234');
 });
 
 it('preserves a mismatched observation for suspense instead of claiming it matches', function () {
@@ -302,6 +376,23 @@ function verification(): FundingVerificationData
         currency: 'PHP',
         fundingAddress: '915001234567890123456',
         webhookReceiptId: 42,
+    );
+}
+
+function dedicatedDestination(): FundingDestinationData
+{
+    return new FundingDestinationData(
+        provider: 'netbank',
+        mode: 'dedicated',
+        destinationType: 'bank_account',
+        accountReference: 'wallet:dedicated',
+        displayReference: '•••• 1234 · VCA 54321',
+        fingerprint: hash('sha256', 'netbank|991100001234|54321'),
+        verificationStatus: 'verified',
+        bankAccountNumber: '991100001234',
+        bankAccountName: 'Dedicated Treasury',
+        routingAlias: '54321',
+        routingCredential: 'dedicated-alias-token',
     );
 }
 

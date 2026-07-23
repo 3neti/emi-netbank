@@ -7,6 +7,7 @@ namespace LBHurtado\PaymentGateway\Funding;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
+use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionsData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
@@ -37,7 +38,8 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
         $this->assertProvider($request->provider);
         $this->assertPositiveAmount($request->amountMinor);
         $currency = $this->currency($request->currency);
-        $alias = $this->vcaAlias();
+        $routing = $this->routingProfile($request->destination);
+        $alias = $routing['alias'];
         $reference = $this->numericReference($request->fundingReference);
         $vcaNumber = $alias.$reference;
         $issuedAt = DateTimeImmutable::createFromInterface(now());
@@ -49,7 +51,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
         }
 
         if ((bool) config('payment-gateway.netbank.funding.pre_transaction_validation_enabled', true)) {
-            $this->client->registerPreTransactionReference($reference);
+            $this->client->registerPreTransactionReference($reference, $routing['alias_token']);
         }
 
         if ((bool) config('payment-gateway.netbank.funding.exact_limits_enabled', true)) {
@@ -59,6 +61,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
                 currency: $currency,
                 validFrom: $issuedAt,
                 validTo: $expiresAt,
+                accountNumber: $routing['account_number'],
             );
         }
 
@@ -71,7 +74,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
             fundingAddress: $vcaNumber,
             displayData: [
                 'institution' => 'NetBank',
-                'account_name' => $this->requiredConfig('corporate_account_name'),
+                'account_name' => $routing['account_name'],
                 'destination_account' => $vcaNumber,
                 'amount_minor' => $request->amountMinor,
                 'currency' => $currency,
@@ -128,6 +131,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
         $this->assertProvider($verification->provider);
         $this->assertPositiveAmount($verification->expectedAmountMinor);
         $currency = $this->currency($verification->currency);
+        $routing = $this->routingProfile($verification->destination);
         $vcaNumber = trim((string) $verification->fundingAddress);
 
         if ($vcaNumber === '' || preg_match('/\A\d{12,}\z/', $vcaNumber) !== 1) {
@@ -135,7 +139,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
         }
 
         $incoming = array_values(array_filter(
-            $this->client->transactions($vcaNumber),
+            $this->client->transactions($vcaNumber, $routing['account_number']),
             fn (array $transaction): bool => $this->isIncomingCredit($transaction, $vcaNumber),
         ));
 
@@ -182,7 +186,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
             providerOperationId: $this->optionalString(data_get($transaction, 'operation_id')),
             requestId: $this->optionalString(data_get($transaction, 'reference_id')),
             fundingAddress: 'sha256:'.hash('sha256', $vcaNumber),
-            providerAccountReference: 'sha256:'.hash('sha256', $this->requiredConfig('corporate_account_number')),
+            providerAccountReference: 'sha256:'.hash('sha256', $routing['account_number']),
             occurredAt: $this->optionalDate(data_get($transaction, 'date')),
             settledAt: $this->settledAt($transaction),
             webhookReceiptId: $verification->webhookReceiptId,
@@ -215,15 +219,42 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
         return $numeric;
     }
 
-    private function vcaAlias(): string
+    /**
+     * @return array{account_number: string, account_name: string, alias: string, alias_token: string}
+     */
+    private function routingProfile(?FundingDestinationData $destination): array
     {
-        $alias = $this->requiredConfig('vca_alias');
+        if ($destination !== null) {
+            $this->assertProvider($destination->provider);
+
+            if ($destination->destinationType !== 'bank_account') {
+                throw new InvalidArgumentException('The NetBank funding destination must be a bank account.');
+            }
+        }
+
+        $accountNumber = $destination?->bankAccountNumber ?? $this->requiredConfig('corporate_account_number');
+        $accountName = $destination?->bankAccountName ?? $this->requiredConfig('corporate_account_name');
+        $alias = $destination?->routingAlias ?? $this->requiredConfig('vca_alias');
+        $aliasToken = $destination?->routingCredential ?? $this->requiredConfig('vca_alias_token');
+
+        if (preg_match('/\A\d{8,32}\z/', $accountNumber) !== 1) {
+            throw new NetbankFundingConfigurationException('NetBank corporate account number must contain 8 to 32 digits.');
+        }
 
         if (preg_match('/\A\d{5}\z/', $alias) !== 1) {
             throw new NetbankFundingConfigurationException('NetBank VCA alias must contain exactly five digits.');
         }
 
-        return $alias;
+        if (trim($accountName) === '' || trim($aliasToken) === '') {
+            throw new NetbankFundingConfigurationException('NetBank dedicated routing requires an account name and VCA alias token.');
+        }
+
+        return [
+            'account_number' => $accountNumber,
+            'account_name' => trim($accountName),
+            'alias' => $alias,
+            'alias_token' => trim($aliasToken),
+        ];
     }
 
     private function isIncomingCredit(array $transaction, string $vcaNumber): bool

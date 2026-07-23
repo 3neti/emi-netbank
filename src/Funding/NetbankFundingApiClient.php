@@ -19,10 +19,27 @@ class NetbankFundingApiClient
         private readonly CacheRepository $cache,
     ) {}
 
-    public function registerPreTransactionReference(string $reference): void
+    public function generateAliasToken(string $accountNumber, string $alias): string
+    {
+        $response = $this->api()->post('/v1/vca/pre-transaction/token', [
+            'vca_alias' => $alias,
+            'account_number' => $accountNumber,
+        ]);
+
+        $this->assertSuccessful($response, 'generate-vca-alias-token');
+        $token = $response->json('vca_alias_token');
+
+        if (! is_string($token) || trim($token) === '') {
+            throw NetbankFundingRequestFailed::invalidResponse('generate-vca-alias-token');
+        }
+
+        return trim($token);
+    }
+
+    public function registerPreTransactionReference(string $reference, ?string $aliasToken = null): void
     {
         $response = $this->api()->post('/v1/vca/pre-transaction/register', [
-            'vca_alias_token' => $this->requiredConfig('vca_alias_token'),
+            'vca_alias_token' => $aliasToken ?? $this->requiredConfig('vca_alias_token'),
             'vca_reference_number' => $reference,
         ]);
 
@@ -35,10 +52,11 @@ class NetbankFundingApiClient
         string $currency,
         DateTimeImmutable $validFrom,
         DateTimeImmutable $validTo,
+        ?string $accountNumber = null,
     ): void {
         $response = $this->api()->post('/v1/vca/create', [
             'vca_number' => $vcaNumber,
-            'account_number' => $this->requiredConfig('corporate_account_number'),
+            'account_number' => $accountNumber ?? $this->requiredConfig('corporate_account_number'),
             'limits' => [
                 'is_one_time_usage' => true,
                 'maximum_amount' => [
@@ -60,10 +78,10 @@ class NetbankFundingApiClient
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function transactions(string $vcaNumber): array
+    public function transactions(string $vcaNumber, ?string $accountNumber = null): array
     {
         $response = $this->api()->get('/v1/vca/'.rawurlencode($vcaNumber).'/transactions', [
-            'account_number' => $this->requiredConfig('corporate_account_number'),
+            'account_number' => $accountNumber ?? $this->requiredConfig('corporate_account_number'),
             'start_date' => now()->subDays((int) config('payment-gateway.netbank.funding.verification_lookback_days', 7))->format('Y-m-d'),
             'end_date' => now()->addDay()->format('Y-m-d'),
             'limit' => 100,
@@ -87,6 +105,7 @@ class NetbankFundingApiClient
             ->acceptJson()
             ->asJson()
             ->withToken($this->accessToken())
+            ->connectTimeout((int) config('payment-gateway.netbank.funding.connect_timeout_seconds', 5))
             ->timeout((int) config('payment-gateway.netbank.funding.timeout_seconds', 15));
     }
 
@@ -104,6 +123,7 @@ class NetbankFundingApiClient
             ->asForm()
             ->acceptJson()
             ->withBasicAuth($clientId, $this->requiredConfig('client_secret'))
+            ->connectTimeout((int) config('payment-gateway.netbank.funding.connect_timeout_seconds', 5))
             ->timeout((int) config('payment-gateway.netbank.funding.timeout_seconds', 15))
             ->post($this->requiredConfig('token_url'), [
                 'grant_type' => 'client_credentials',

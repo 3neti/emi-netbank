@@ -34,6 +34,7 @@ return [
             'reference_key' => env('NETBANK_FUNDING_REFERENCE_KEY', env('APP_KEY')),
             'pre_transaction_validation_enabled' => env('NETBANK_FUNDING_PRE_TRANSACTION_VALIDATION_ENABLED', true),
             'exact_limits_enabled' => env('NETBANK_FUNDING_EXACT_LIMITS_ENABLED', true),
+            'connect_timeout_seconds' => env('NETBANK_FUNDING_CONNECT_TIMEOUT_SECONDS', 5),
             'timeout_seconds' => env('NETBANK_FUNDING_TIMEOUT_SECONDS', 15),
             'verification_lookback_days' => env('NETBANK_FUNDING_VERIFICATION_LOOKBACK_DAYS', 7),
             'webhook' => [
