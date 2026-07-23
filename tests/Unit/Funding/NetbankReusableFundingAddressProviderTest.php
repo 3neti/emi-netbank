@@ -71,25 +71,28 @@ it('creates a stable open-amount static NetBank QR without registering or limiti
 });
 
 it('returns only sanitized incoming observations for the exact reusable VCA', function () {
+    $fundingAddress = reusableFundingAddressForOwner('App\\Models\\User:5');
+
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
         'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
             'transactions' => [
-                reusableFundingTransaction(),
+                reusableFundingTransaction(destination: $fundingAddress),
                 reusableFundingTransaction(
                     transactionId: 'wrong-destination',
                     destination: '915009999999999999999',
                 ),
                 reusableFundingTransaction(
                     transactionId: 'outgoing',
+                    destination: $fundingAddress,
                     type: 'Debit',
                 ),
             ],
         ]),
     ]);
 
-    $observations = app(NetbankReusableFundingAddressProvider::class)
-        ->observations('915001234567890123456');
+    $provider = app(NetbankReusableFundingAddressProvider::class);
+    $observations = $provider->observationsForOwner('App\\Models\\User:5');
 
     expect($observations)->toHaveCount(1)
         ->and($observations[0]->transactionHash)->toBe(hash('sha256', 'transaction-123'))
@@ -107,8 +110,9 @@ it('returns only sanitized incoming observations for the exact reusable VCA', fu
 
     Http::assertSent(fn (Request $request): bool => str_contains(
         $request->url(),
-        '/v1/vca/915001234567890123456/transactions?',
+        '/v1/vca/'.$fundingAddress.'/transactions?',
     ) && $request->data()['account_number'] === '113001000019');
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/qrph/generate'));
 });
 
 it('fails closed when a reusable QR response is not a valid PNG', function () {
@@ -159,4 +163,21 @@ function reusableFundingTransaction(
 function reusableFundingValidPngBase64(): string
 {
     return 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lDoLpwAAAABJRU5ErkJggg==';
+}
+
+function reusableFundingAddressForOwner(string $ownerReference): string
+{
+    $digest = hash_hmac(
+        'sha256',
+        'reusable-funding-address|'.$ownerReference,
+        'funding-reference-key',
+        true,
+    );
+    $numeric = '';
+
+    for ($index = 0; $index < 16; $index++) {
+        $numeric .= (string) (ord($digest[$index]) % 10);
+    }
+
+    return '91500'.$numeric;
 }

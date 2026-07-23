@@ -25,7 +25,7 @@ final class NetbankReusableFundingAddressProvider
     ): NetbankReusableFundingAddressData {
         $routing = $this->routingProfile($destination);
         $currency = $this->currency($currency);
-        $fundingAddress = $routing['alias'].$this->numericReference($ownerReference);
+        $fundingAddress = $this->fundingAddress($ownerReference, $routing['alias']);
         $qrCode = $this->client->generateReusableQrCode($fundingAddress, $currency);
 
         return new NetbankReusableFundingAddressData(
@@ -42,6 +42,21 @@ final class NetbankReusableFundingAddressProvider
                 embeddedAmount: false,
                 providerGenerated: true,
             ),
+        );
+    }
+
+    /**
+     * @return list<NetbankReusableFundingObservationData>
+     */
+    public function observationsForOwner(
+        string $ownerReference,
+        ?FundingDestinationData $destination = null,
+    ): array {
+        $routing = $this->routingProfile($destination);
+
+        return $this->observations(
+            $this->fundingAddress($ownerReference, $routing['alias']),
+            $destination,
         );
     }
 
@@ -157,6 +172,11 @@ final class NetbankReusableFundingAddressProvider
         }
 
         return $numeric;
+    }
+
+    private function fundingAddress(string $ownerReference, string $alias): string
+    {
+        return $alias.$this->numericReference($ownerReference);
     }
 
     private function assertFundingAddress(string $fundingAddress, string $alias): void
