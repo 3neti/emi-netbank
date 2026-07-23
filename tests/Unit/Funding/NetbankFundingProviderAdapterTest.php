@@ -16,8 +16,10 @@ use LBHurtado\EmiCore\Data\Funding\WebhookAuthenticationData;
 use LBHurtado\EmiCore\Exceptions\ProviderFundingNotObserved;
 use LBHurtado\EmiCore\Exceptions\ProviderFundingVerificationIndeterminate;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingAmbiguous;
+use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingNotVerified;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingRequestFailed;
+use LBHurtado\PaymentGateway\Funding\NetbankFundingApiClient;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
 
 beforeEach(function () {
@@ -35,6 +37,11 @@ beforeEach(function () {
         'vca_alias' => '91500',
         'vca_alias_token' => 'configured-alias-token',
         'reference_key' => 'funding-reference-key',
+        'qr_endpoint' => 'https://api.netbank.test/v1/qr/generate',
+        'qr_merchant_name' => 'X Change',
+        'qr_merchant_city' => 'Manila',
+        'qr_purpose' => 'Account funding',
+        'qr_resolution' => 480,
         'pre_transaction_validation_enabled' => true,
         'exact_limits_enabled' => true,
         'timeout_seconds' => 5,
@@ -66,6 +73,9 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
         ]),
         'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
         'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
+        'https://api.netbank.test/v1/qr/generate' => Http::response([
+            'qr_code' => validPngBase64(),
+        ]),
     ]);
 
     $request = new FundingInstructionRequestData(
@@ -84,6 +94,12 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
         ->and($instructions->fundingAddress)->toBe($instructions->providerReference)
         ->and($instructions->amountMinor)->toBe(25_000)
         ->and($instructions->currency)->toBe('PHP')
+        ->and($instructions->qrCode?->mimeType)->toBe('image/png')
+        ->and($instructions->qrCode?->base64Payload)->toBe(validPngBase64())
+        ->and($instructions->qrCode?->qrMode)->toBe('dynamic')
+        ->and($instructions->qrCode?->transactionType)->toBe('p2m')
+        ->and($instructions->qrCode?->embeddedAmount)->toBeTrue()
+        ->and($instructions->qrCode?->providerGenerated)->toBeTrue()
         ->and($instructions->displayData)->toMatchArray([
             'institution' => 'NetBank',
             'account_name' => 'X Change Treasury',
@@ -91,7 +107,7 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
             'amount_minor' => 25_000,
             'currency' => 'PHP',
             'one_time' => true,
-            'delivery' => 'manual-bank-or-wallet-transfer',
+            'delivery' => 'scan-to-pay',
         ]);
 
     Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://auth.netbank.test/oauth2/token'
@@ -118,9 +134,25 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
             ],
         ]);
 
+    Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/qr/generate'
+        && $httpRequest->data() === [
+            'merchant_name' => 'X Change',
+            'merchant_city' => 'Manila',
+            'qr_type' => 'Dynamic',
+            'qr_transaction_type' => 'P2M',
+            'destination_account' => $instructions->providerReference,
+            'resolution' => 480,
+            'purpose' => 'Account funding',
+            'reference_id' => 'FND-01K123456789',
+            'amount' => ['cur' => 'PHP', 'num' => '250.00'],
+        ]);
+
     Http::fake([
         'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
         'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
+        'https://api.netbank.test/v1/qr/generate' => Http::response([
+            'qr_code' => validPngBase64(),
+        ]),
     ]);
 
     $reissued = app(NetbankFundingProviderAdapter::class)->createFundingInstructions($request);
@@ -136,6 +168,9 @@ it('uses a dedicated destination without reading shared routing values', functio
         ]),
         'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
         'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
+        'https://api.netbank.test/v1/qr/generate' => Http::response([
+            'qr_code' => validPngBase64(),
+        ]),
     ]);
 
     $request = new FundingInstructionRequestData(
@@ -170,7 +205,7 @@ it('generates a VCA alias token for an explicit account and alias', function () 
         ]),
     ]);
 
-    $token = app(\LBHurtado\PaymentGateway\Funding\NetbankFundingApiClient::class)
+    $token = app(NetbankFundingApiClient::class)
         ->generateAliasToken('991100001234', '54321');
 
     expect($token)->toBe('generated-write-only-token');
@@ -181,6 +216,110 @@ it('generates a VCA alias token for an explicit account and alias', function () 
             'account_number' => '991100001234',
         ]);
 });
+
+it('fails safely when NetBank does not return a valid base64 png', function (mixed $qrCode) {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response([
+            'access_token' => 'access-token',
+            'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
+        'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
+        'https://api.netbank.test/v1/qr/generate' => Http::response([
+            'qr_code' => $qrCode,
+            'secret' => 'must-not-leak',
+        ]),
+    ]);
+
+    try {
+        app(NetbankFundingProviderAdapter::class)->createFundingInstructions(new FundingInstructionRequestData(
+            provider: 'netbank',
+            fundingReference: 'FND-QR-FAILURE',
+            amountMinor: 25_000,
+            currency: 'PHP',
+            accountReference: 'account-123',
+        ));
+    } catch (NetbankFundingRequestFailed $exception) {
+        expect($exception->getMessage())->toContain('generate-qrph')
+            ->not->toContain('must-not-leak')
+            ->not->toContain('113001000019');
+
+        return;
+    }
+
+    $this->fail('Expected invalid NetBank QR data to fail closed.');
+})->with([
+    'missing' => null,
+    'not base64' => 'not-a-base64-png',
+    'base64 non png' => base64_encode('not a png'),
+]);
+
+it('reuses the deterministic VCA when QR issuance is retried', function () {
+    $qrAttempts = 0;
+
+    Http::fake(function (Request $request) use (&$qrAttempts) {
+        if ($request->url() === 'https://auth.netbank.test/oauth2/token') {
+            return Http::response(['access_token' => 'access-token']);
+        }
+
+        if ($request->url() === 'https://api.netbank.test/v1/qr/generate') {
+            $qrAttempts++;
+
+            return $qrAttempts === 1
+                ? Http::response(['qr_code' => 'invalid'])
+                : Http::response(['qr_code' => validPngBase64()]);
+        }
+
+        return Http::response([], 204);
+    });
+
+    $request = new FundingInstructionRequestData(
+        provider: 'netbank',
+        fundingReference: 'FND-QR-RETRY',
+        amountMinor: 25_000,
+        currency: 'PHP',
+        accountReference: 'account-123',
+    );
+
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->createFundingInstructions($request))
+        ->toThrow(NetbankFundingRequestFailed::class);
+
+    $instructions = app(NetbankFundingProviderAdapter::class)->createFundingInstructions($request);
+    $destinations = collect(Http::recorded())
+        ->filter(fn (array $record): bool => $record[0]->url() === 'https://api.netbank.test/v1/qr/generate')
+        ->map(fn (array $record): string => (string) $record[0]['destination_account'])
+        ->values()
+        ->all();
+
+    expect($qrAttempts)->toBe(2)
+        ->and($destinations)->toHaveCount(2)
+        ->and(array_unique($destinations))->toHaveCount(1)
+        ->and($instructions->providerReference)->toBe($destinations[0]);
+});
+
+it('requires every NetBank QR funding readiness field', function (string $key) {
+    config()->set("payment-gateway.netbank.funding.{$key}", null);
+
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->createFundingInstructions(new FundingInstructionRequestData(
+        provider: 'netbank',
+        fundingReference: 'FND-READINESS',
+        amountMinor: 25_000,
+        currency: 'PHP',
+        accountReference: 'account-123',
+    )))->toThrow(NetbankFundingConfigurationException::class);
+})->with([
+    'api_url',
+    'token_url',
+    'client_id',
+    'client_secret',
+    'corporate_account_number',
+    'corporate_account_name',
+    'vca_alias',
+    'vca_alias_token',
+    'qr_endpoint',
+    'qr_merchant_name',
+    'qr_merchant_city',
+]);
 
 it('treats an authenticated webhook as a wake-up hint without trusting its body', function () {
     $adapter = app(NetbankFundingProviderAdapter::class);
@@ -433,4 +572,9 @@ function netbankTransaction(
         'type' => 'Credit',
         'updated' => '2026-07-23T01:06:00.000Z',
     ];
+}
+
+function validPngBase64(): string
+{
+    return 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lDoLpwAAAABJRU5ErkJggg==';
 }

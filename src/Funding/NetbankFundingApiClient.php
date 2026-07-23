@@ -75,6 +75,37 @@ class NetbankFundingApiClient
         $this->assertSuccessful($response, 'create-vca-limit');
     }
 
+    public function generateQrCode(
+        string $vcaNumber,
+        int $amountMinor,
+        string $currency,
+        string $reference,
+    ): string {
+        $response = $this->api()->post($this->requiredConfig('qr_endpoint'), [
+            'merchant_name' => $this->requiredConfig('qr_merchant_name'),
+            'merchant_city' => $this->requiredConfig('qr_merchant_city'),
+            'qr_type' => 'Dynamic',
+            'qr_transaction_type' => 'P2M',
+            'destination_account' => $vcaNumber,
+            'resolution' => (int) config('payment-gateway.netbank.funding.qr_resolution', 480),
+            'purpose' => $this->requiredConfig('qr_purpose'),
+            'reference_id' => $reference,
+            'amount' => [
+                'cur' => $currency,
+                'num' => number_format($amountMinor / 100, 2, '.', ''),
+            ],
+        ]);
+
+        $this->assertSuccessful($response, 'generate-qrph');
+        $encoded = $response->json('qr_code');
+
+        if (! is_string($encoded) || ! $this->isBase64Png($encoded)) {
+            throw NetbankFundingRequestFailed::invalidResponse('generate-qrph');
+        }
+
+        return $encoded;
+    }
+
     /**
      * @return array<int, array<string, mixed>>
      */
@@ -158,5 +189,24 @@ class NetbankFundingApiClient
         }
 
         return trim($value);
+    }
+
+    private function isBase64Png(string $encoded): bool
+    {
+        $encoded = trim($encoded);
+
+        if ($encoded === '' || preg_match('/\A[A-Za-z0-9+\/]+={0,2}\z/', $encoded) !== 1) {
+            return false;
+        }
+
+        $decoded = base64_decode($encoded, true);
+
+        if (! is_string($decoded) || ! str_starts_with($decoded, "\x89PNG\r\n\x1a\n")) {
+            return false;
+        }
+
+        $image = @getimagesizefromstring($decoded);
+
+        return is_array($image) && ($image['mime'] ?? null) === 'image/png';
     }
 }

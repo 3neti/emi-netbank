@@ -10,6 +10,7 @@ use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionsData;
+use LBHurtado\EmiCore\Data\Funding\FundingQrCodeData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderEventHintData;
 use LBHurtado\EmiCore\Data\Funding\ProviderFundingObservationData;
@@ -38,7 +39,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
         $this->assertProvider($request->provider);
         $this->assertPositiveAmount($request->amountMinor);
         $currency = $this->currency($request->currency);
-        $routing = $this->routingProfile($request->destination);
+        $routing = $this->instructionRoutingProfile($request->destination);
         $alias = $routing['alias'];
         $reference = $this->numericReference($request->fundingReference);
         $vcaNumber = $alias.$reference;
@@ -65,6 +66,13 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
             );
         }
 
+        $qrCode = $this->client->generateQrCode(
+            vcaNumber: $vcaNumber,
+            amountMinor: $request->amountMinor,
+            currency: $currency,
+            reference: $request->fundingReference,
+        );
+
         return new FundingInstructionsData(
             provider: self::Provider,
             providerReference: $vcaNumber,
@@ -79,8 +87,16 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
                 'amount_minor' => $request->amountMinor,
                 'currency' => $currency,
                 'one_time' => true,
-                'delivery' => 'manual-bank-or-wallet-transfer',
+                'delivery' => 'scan-to-pay',
             ],
+            qrCode: new FundingQrCodeData(
+                mimeType: 'image/png',
+                base64Payload: $qrCode,
+                qrMode: 'dynamic',
+                transactionType: 'p2m',
+                embeddedAmount: true,
+                providerGenerated: true,
+            ),
         );
     }
 
@@ -222,6 +238,30 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
     /**
      * @return array{account_number: string, account_name: string, alias: string, alias_token: string}
      */
+    private function instructionRoutingProfile(?FundingDestinationData $destination): array
+    {
+        $routing = $this->routingProfile($destination);
+
+        foreach ([
+            'api_url',
+            'token_url',
+            'client_id',
+            'client_secret',
+            'reference_key',
+            'qr_endpoint',
+            'qr_merchant_name',
+            'qr_merchant_city',
+            'qr_purpose',
+        ] as $key) {
+            $this->requiredConfig($key);
+        }
+
+        return $routing;
+    }
+
+    /**
+     * @return array{account_number: string, account_name: string, alias: string, alias_token: string}
+     */
     private function routingProfile(?FundingDestinationData $destination): array
     {
         if ($destination !== null) {
@@ -237,8 +277,8 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
         $alias = $destination?->routingAlias ?? $this->requiredConfig('vca_alias');
         $aliasToken = $destination?->routingCredential ?? $this->requiredConfig('vca_alias_token');
 
-        if (preg_match('/\A\d{8,32}\z/', $accountNumber) !== 1) {
-            throw new NetbankFundingConfigurationException('NetBank corporate account number must contain 8 to 32 digits.');
+        if (preg_match('/\A[0-9-]{8,32}\z/', $accountNumber) !== 1) {
+            throw new NetbankFundingConfigurationException('NetBank corporate account number must contain 8 to 32 digits or hyphens.');
         }
 
         if (preg_match('/\A\d{5}\z/', $alias) !== 1) {
