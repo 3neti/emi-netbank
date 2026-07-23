@@ -13,6 +13,7 @@ use LBHurtado\EmiCore\Data\Funding\ProviderFundingObservationData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingObservationRequestData;
+use LBHurtado\EmiCore\Enums\FundingAddressPurpose;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 
 final class NetbankReusableFundingAddressProvider implements StandingFundingAddressProvider
@@ -21,6 +22,7 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
 
     public function __construct(
         private readonly NetbankFundingApiClient $client,
+        private readonly NetbankStandingAddressProfile $profile,
     ) {}
 
     public function providerCode(): string
@@ -31,27 +33,45 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
     public function createStandingFundingAddress(
         StandingFundingAddressRequestData $request,
     ): StandingFundingAddressData {
-        $address = $this->create(
-            ownerReference: $this->standingAddressReference($request),
-            currency: $request->currency,
-            destination: $request->destination,
-        );
+        $routing = $this->routingProfile($request->destination);
+        $currency = $this->currency($request->currency);
+        $derived = null;
+        $fundingAddress = trim((string) $request->existingFundingAddress);
+
+        if ($fundingAddress === '') {
+            $derived = $this->profile->derive($request);
+            $fundingAddress = $routing['alias'].$derived->reference;
+        }
+
+        $this->assertFundingAddress($fundingAddress, $routing['alias']);
+        $qrCode = $this->client->generateReusableQrCode($fundingAddress, $currency);
 
         return new StandingFundingAddressData(
             provider: self::Provider,
             providerReference: 'standing:netbank:'.hash(
                 'sha256',
-                $this->standingAddressReference($request),
+                $fundingAddress,
             ),
-            fundingAddress: $address->fundingAddress,
+            fundingAddress: $fundingAddress,
             accountReference: $request->accountReference,
             purpose: $request->purpose,
-            currency: $address->currency,
-            qrCode: $address->qrCode,
+            currency: $currency,
+            qrCode: new FundingQrCodeData(
+                mimeType: 'image/png',
+                base64Payload: $qrCode,
+                qrMode: 'static',
+                transactionType: 'p2m',
+                embeddedAmount: false,
+                providerGenerated: true,
+            ),
             reusable: true,
             displayData: [
-                'institution' => $address->institution,
-                'merchant_name' => $address->merchantName,
+                'institution' => 'NetBank',
+                'merchant_name' => $this->requiredConfig('qr_merchant_name'),
+                'derivation_scheme' => $derived?->scheme->value,
+                'derivation_key_id' => $derived?->keyId,
+                'derivation_counter' => $derived?->counter,
+                'reference_length' => strlen($fundingAddress) - strlen($routing['alias']),
             ],
         );
     }
@@ -82,26 +102,26 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
         string $ownerReference,
         string $currency = 'PHP',
         ?FundingDestinationData $destination = null,
+        ?string $routingReference = null,
     ): NetbankReusableFundingAddressData {
-        $routing = $this->routingProfile($destination);
-        $currency = $this->currency($currency);
-        $fundingAddress = $this->fundingAddress($ownerReference, $routing['alias']);
-        $qrCode = $this->client->generateReusableQrCode($fundingAddress, $currency);
+        $address = $this->createStandingFundingAddress(
+            new StandingFundingAddressRequestData(
+                ownerReference: $ownerReference,
+                accountReference: $ownerReference,
+                purpose: FundingAddressPurpose::AccountFunding,
+                currency: $currency,
+                destination: $destination,
+                routingReference: $routingReference,
+            ),
+        );
 
         return new NetbankReusableFundingAddressData(
             provider: self::Provider,
-            fundingAddress: $fundingAddress,
-            currency: $currency,
+            fundingAddress: $address->fundingAddress,
+            currency: $address->currency,
             institution: 'NetBank',
             merchantName: $this->requiredConfig('qr_merchant_name'),
-            qrCode: new FundingQrCodeData(
-                mimeType: 'image/png',
-                base64Payload: $qrCode,
-                qrMode: 'static',
-                transactionType: 'p2m',
-                embeddedAmount: false,
-                providerGenerated: true,
-            ),
+            qrCode: $address->qrCode,
         );
     }
 
@@ -111,11 +131,20 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
     public function observationsForOwner(
         string $ownerReference,
         ?FundingDestinationData $destination = null,
+        ?string $routingReference = null,
     ): array {
         $routing = $this->routingProfile($destination);
+        $derived = $this->profile->derive(new StandingFundingAddressRequestData(
+            ownerReference: $ownerReference,
+            accountReference: $ownerReference,
+            purpose: FundingAddressPurpose::AccountFunding,
+            currency: 'PHP',
+            destination: $destination,
+            routingReference: $routingReference,
+        ));
 
         return $this->observations(
-            $this->fundingAddress($ownerReference, $routing['alias']),
+            $routing['alias'].$derived->reference,
             $destination,
         );
     }
@@ -268,50 +297,12 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
         ];
     }
 
-    private function numericReference(string $ownerReference): string
-    {
-        $ownerReference = trim($ownerReference);
-
-        if ($ownerReference === '') {
-            throw new InvalidArgumentException('A reusable funding address owner reference is required.');
-        }
-
-        $digest = hash_hmac(
-            'sha256',
-            'reusable-funding-address|'.$ownerReference,
-            $this->requiredConfig('reference_key'),
-            true,
-        );
-        $numeric = '';
-
-        for ($index = 0; $index < 16; $index++) {
-            $numeric .= (string) (ord($digest[$index]) % 10);
-        }
-
-        return $numeric;
-    }
-
-    private function fundingAddress(string $ownerReference, string $alias): string
-    {
-        return $alias.$this->numericReference($ownerReference);
-    }
-
-    private function standingAddressReference(StandingFundingAddressRequestData $request): string
-    {
-        return implode('|', [
-            'standing-funding-address',
-            trim($request->ownerReference),
-            trim($request->accountReference),
-            $request->purpose->value,
-            $this->currency($request->currency),
-        ]);
-    }
-
     private function assertFundingAddress(string $fundingAddress, string $alias): void
     {
         if (
-            preg_match('/\A\d{21}\z/', $fundingAddress) !== 1
+            preg_match('/\A\d{16}\z/', $fundingAddress) !== 1
             || ! str_starts_with($fundingAddress, $alias)
+            || strlen($fundingAddress) !== $this->profile->totalLength($alias)
         ) {
             throw new InvalidArgumentException('A valid reusable NetBank VCA is required.');
         }

@@ -32,6 +32,17 @@ return [
             'vca_alias' => env('NETBANK_FUNDING_VCA_ALIAS', env('NETBANK_CLIENT_ALIAS')),
             'vca_alias_token' => env('NETBANK_FUNDING_VCA_ALIAS_TOKEN'),
             'reference_key' => env('NETBANK_FUNDING_REFERENCE_KEY', env('APP_KEY')),
+            'standing_address' => [
+                'scheme' => env(
+                    'NETBANK_FUNDING_STANDING_ADDRESS_SCHEME',
+                    env('APP_ENV') === 'production'
+                        ? 'netbank-account-hmac-v2'
+                        : 'netbank-mobile-v1',
+                ),
+                'reference_length' => (int) env('NETBANK_FUNDING_VCA_REFERENCE_LENGTH', 11),
+                'hmac_key_id' => env('NETBANK_FUNDING_STANDING_HMAC_KEY_ID'),
+                'hmac_key' => env('NETBANK_FUNDING_STANDING_HMAC_KEY'),
+            ],
             'qr_endpoint' => env(
                 'NETBANK_FUNDING_QR_ENDPOINT',
                 env('NETBANK_QR_ENDPOINT', 'https://api.netbank.ph/v1/qrph/generate')
