@@ -1,5 +1,7 @@
 <?php
 
+use LBHurtado\PaymentGateway\Gateways\Netbank\NetbankPaymentGateway;
+
 return [
     'default' => env('PAYMENT_GATEWAY', 'netbank'),
 
@@ -20,6 +22,28 @@ return [
     |--------------------------------------------------------------------------
     */
     'netbank' => [
+        'funding' => [
+            'api_url' => env('NETBANK_FUNDING_API_URL', 'https://api.netbank.ph'),
+            'token_url' => env('NETBANK_FUNDING_TOKEN_URL', 'https://auth.netbank.ph/oauth2/token'),
+            'client_id' => env('NETBANK_FUNDING_CLIENT_ID', env('NETBANK_CLIENT_ID')),
+            'client_secret' => env('NETBANK_FUNDING_CLIENT_SECRET', env('NETBANK_CLIENT_SECRET')),
+            'corporate_account_number' => env('NETBANK_FUNDING_CORPORATE_ACCOUNT_NUMBER'),
+            'corporate_account_name' => env('NETBANK_FUNDING_CORPORATE_ACCOUNT_NAME'),
+            'vca_alias' => env('NETBANK_FUNDING_VCA_ALIAS'),
+            'vca_alias_token' => env('NETBANK_FUNDING_VCA_ALIAS_TOKEN'),
+            'reference_key' => env('NETBANK_FUNDING_REFERENCE_KEY', env('APP_KEY')),
+            'pre_transaction_validation_enabled' => env('NETBANK_FUNDING_PRE_TRANSACTION_VALIDATION_ENABLED', true),
+            'exact_limits_enabled' => env('NETBANK_FUNDING_EXACT_LIMITS_ENABLED', true),
+            'timeout_seconds' => env('NETBANK_FUNDING_TIMEOUT_SECONDS', 15),
+            'verification_lookback_days' => env('NETBANK_FUNDING_VERIFICATION_LOOKBACK_DAYS', 7),
+            'webhook' => [
+                'allowed_ips' => array_values(array_filter(array_map(
+                    'trim',
+                    explode(',', (string) env('NETBANK_FUNDING_WEBHOOK_ALLOWED_IPS', '')),
+                ))),
+                'expected_content_type' => 'text/plain;charset=ISO-8859-1',
+            ],
+        ],
         'direct_checkout' => [
             'use_fake' => env('NETBANK_DIRECT_CHECKOUT_USE_FAKE', false),
             'access_key' => env('NETBANK_DIRECT_CHECKOUT_ACCESS_KEY'),
@@ -30,7 +54,7 @@ return [
         ],
     ],
 
-    'gateway' => LBHurtado\PaymentGateway\Gateways\Netbank\NetbankPaymentGateway::class,
+    'gateway' => NetbankPaymentGateway::class,
 
     /*
     |--------------------------------------------------------------------------

@@ -11,7 +11,9 @@ use LBHurtado\PaymentGateway\Console\Commands\GenerateQrCommand;
 use LBHurtado\PaymentGateway\Console\Commands\TestDisbursementCommand;
 use LBHurtado\PaymentGateway\Console\Commands\TestGCashMemoCommand;
 use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
+use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
 use LBHurtado\PaymentGateway\Gateways\Netbank\NetbankPaymentGateway;
+use LBHurtado\PaymentGateway\Gateways\Omnipay\OmnipayPaymentGateway;
 use LBHurtado\Wallet\Services\SystemUserResolverService;
 
 class PaymentGatewayServiceProvider extends ServiceProvider
@@ -36,6 +38,8 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         );
 
         $this->app->singleton(SystemUserResolverService::class, fn () => new SystemUserResolverService);
+        $this->app->singleton(NetbankFundingProviderAdapter::class);
+        $this->app->tag(NetbankFundingProviderAdapter::class, 'emi.funding-provider-adapters');
 
         $this->app->bind(PaymentGatewayInterface::class, function ($app) {
             // Check if we should use Omnipay implementation
@@ -46,7 +50,7 @@ class PaymentGatewayServiceProvider extends ServiceProvider
 
             if ($useOmnipay) {
                 return $app->make(
-                    \LBHurtado\PaymentGateway\Gateways\Omnipay\OmnipayPaymentGateway::class
+                    OmnipayPaymentGateway::class
                 );
             }
 
