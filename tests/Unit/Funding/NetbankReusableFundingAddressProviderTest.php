@@ -5,6 +5,10 @@ declare(strict_types=1);
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use LBHurtado\EmiCore\Contracts\StandingFundingAddressProvider;
+use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressRequestData;
+use LBHurtado\EmiCore\Data\Funding\StandingFundingObservationRequestData;
+use LBHurtado\EmiCore\Enums\FundingAddressPurpose;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingRequestFailed;
 use LBHurtado\PaymentGateway\Funding\NetbankReusableFundingAddressProvider;
 
@@ -70,6 +74,34 @@ it('creates a stable open-amount static NetBank QR without registering or limiti
     Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '/v1/vca/create'));
 });
 
+it('implements the provider-neutral standing address contract with purpose-separated addresses', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response([
+            'access_token' => 'access-token',
+            'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/qrph/generate' => Http::response([
+            'qr_code' => reusableFundingValidPngBase64(),
+        ]),
+    ]);
+
+    $provider = app(NetbankReusableFundingAddressProvider::class);
+    $accountFunding = $provider->createStandingFundingAddress(standingAddressRequest());
+    $payment = $provider->createStandingFundingAddress(standingAddressRequest(
+        FundingAddressPurpose::Payment,
+    ));
+
+    expect($provider)->toBeInstanceOf(StandingFundingAddressProvider::class)
+        ->and($provider->providerCode())->toBe('netbank')
+        ->and($accountFunding->purpose)->toBe(FundingAddressPurpose::AccountFunding)
+        ->and($accountFunding->accountReference)->toBe('App\\Models\\User:5')
+        ->and($accountFunding->fundingAddress)->toMatch('/\A91500\d{16}\z/')
+        ->and($accountFunding->fundingAddress)->not->toBe($payment->fundingAddress)
+        ->and($accountFunding->qrCode->qrMode)->toBe('static')
+        ->and($accountFunding->qrCode->embeddedAmount)->toBeFalse()
+        ->and($accountFunding->reusable)->toBeTrue();
+});
+
 it('returns only sanitized incoming observations for the exact reusable VCA', function () {
     $fundingAddress = reusableFundingAddressForOwner('App\\Models\\User:5');
 
@@ -117,6 +149,57 @@ it('returns only sanitized incoming observations for the exact reusable VCA', fu
         'offset' => 0,
     ]);
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/qrph/generate'));
+});
+
+it('returns authoritative provider observations internally for standing address settlement', function () {
+    $provider = app(NetbankReusableFundingAddressProvider::class);
+    $address = standingFundingAddressForPurpose(FundingAddressPurpose::AccountFunding);
+
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [
+                reusableFundingTransaction(destination: $address),
+                reusableFundingTransaction(
+                    transactionId: 'wrong-destination',
+                    destination: '915009999999999999999',
+                ),
+            ],
+        ]),
+    ]);
+
+    $observations = $provider->observeStandingFundingAddress(
+        new StandingFundingObservationRequestData(
+            fundingAddress: $address,
+            accountReference: 'App\\Models\\User:5',
+            purpose: FundingAddressPurpose::AccountFunding,
+            currency: 'PHP',
+            verificationSource: 'operator',
+            webhookReceiptId: 42,
+        ),
+    );
+
+    expect($observations)->toHaveCount(1)
+        ->and($observations[0]->providerTransactionId)->toBe('transaction-123')
+        ->and($observations[0]->providerOperationId)->toBeNull()
+        ->and($observations[0]->requestId)->toBeNull()
+        ->and($observations[0]->grossAmountMinor)->toBe(25_000)
+        ->and($observations[0]->netAmountMinor)->toBe(24_950)
+        ->and($observations[0]->fundingAddress)->toBe('sha256:'.hash('sha256', $address))
+        ->and($observations[0]->providerAccountReference)
+        ->toBe('sha256:'.hash('sha256', '113001000019'))
+        ->and($observations[0]->webhookReceiptId)->toBe(42)
+        ->and($observations[0]->metadata)->toBe([
+            'description' => 'EXTERNAL_TRANSFER_INCOMING',
+            'type' => 'Credit',
+            'settlement_rail' => null,
+            'destination_verified' => true,
+            'address_purpose' => 'account_funding',
+            'expected_currency_matches' => true,
+            'trigger' => 'operator',
+        ])
+        ->and($observations[0]->metadata)
+        ->not->toHaveKeys(['sender', 'account_number', 'raw_payload']);
 });
 
 it('fails closed when a reusable QR response is not a valid PNG', function () {
@@ -184,4 +267,28 @@ function reusableFundingAddressForOwner(string $ownerReference): string
     }
 
     return '91500'.$numeric;
+}
+
+function standingAddressRequest(
+    FundingAddressPurpose $purpose = FundingAddressPurpose::AccountFunding,
+): StandingFundingAddressRequestData {
+    return new StandingFundingAddressRequestData(
+        ownerReference: 'App\\Models\\User:5',
+        accountReference: 'App\\Models\\User:5',
+        purpose: $purpose,
+        currency: 'PHP',
+    );
+}
+
+function standingFundingAddressForPurpose(FundingAddressPurpose $purpose): string
+{
+    $reference = implode('|', [
+        'standing-funding-address',
+        'App\\Models\\User:5',
+        'App\\Models\\User:5',
+        $purpose->value,
+        'PHP',
+    ]);
+
+    return reusableFundingAddressForOwner($reference);
 }

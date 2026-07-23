@@ -6,17 +6,77 @@ namespace LBHurtado\PaymentGateway\Funding;
 
 use DateTimeImmutable;
 use InvalidArgumentException;
+use LBHurtado\EmiCore\Contracts\StandingFundingAddressProvider;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingQrCodeData;
+use LBHurtado\EmiCore\Data\Funding\ProviderFundingObservationData;
+use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressData;
+use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressRequestData;
+use LBHurtado\EmiCore\Data\Funding\StandingFundingObservationRequestData;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 
-final class NetbankReusableFundingAddressProvider
+final class NetbankReusableFundingAddressProvider implements StandingFundingAddressProvider
 {
     private const Provider = 'netbank';
 
     public function __construct(
         private readonly NetbankFundingApiClient $client,
     ) {}
+
+    public function providerCode(): string
+    {
+        return self::Provider;
+    }
+
+    public function createStandingFundingAddress(
+        StandingFundingAddressRequestData $request,
+    ): StandingFundingAddressData {
+        $address = $this->create(
+            ownerReference: $this->standingAddressReference($request),
+            currency: $request->currency,
+            destination: $request->destination,
+        );
+
+        return new StandingFundingAddressData(
+            provider: self::Provider,
+            providerReference: 'standing:netbank:'.hash(
+                'sha256',
+                $this->standingAddressReference($request),
+            ),
+            fundingAddress: $address->fundingAddress,
+            accountReference: $request->accountReference,
+            purpose: $request->purpose,
+            currency: $address->currency,
+            qrCode: $address->qrCode,
+            reusable: true,
+            displayData: [
+                'institution' => $address->institution,
+                'merchant_name' => $address->merchantName,
+            ],
+        );
+    }
+
+    /**
+     * @return list<ProviderFundingObservationData>
+     */
+    public function observeStandingFundingAddress(
+        StandingFundingObservationRequestData $request,
+    ): array {
+        $routing = $this->routingProfile($request->destination);
+        $this->assertFundingAddress($request->fundingAddress, $routing['alias']);
+
+        return array_values(array_map(
+            fn (array $transaction): ProviderFundingObservationData => $this->providerObservation(
+                transaction: $transaction,
+                request: $request,
+                providerAccountNumber: $routing['account_number'],
+            ),
+            $this->incomingTransactions(
+                fundingAddress: $request->fundingAddress,
+                accountNumber: $routing['account_number'],
+            ),
+        ));
+    }
 
     public function create(
         string $ownerReference,
@@ -72,10 +132,18 @@ final class NetbankReusableFundingAddressProvider
 
         return array_values(array_map(
             fn (array $transaction): NetbankReusableFundingObservationData => $this->observation($transaction),
-            array_filter(
-                $this->client->transactions($fundingAddress, $routing['account_number']),
-                fn (array $transaction): bool => $this->isIncomingCredit($transaction, $fundingAddress),
-            ),
+            $this->incomingTransactions($fundingAddress, $routing['account_number']),
+        ));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function incomingTransactions(string $fundingAddress, string $accountNumber): array
+    {
+        return array_values(array_filter(
+            $this->client->transactions($fundingAddress, $accountNumber),
+            fn (array $transaction): bool => $this->isIncomingCredit($transaction, $fundingAddress),
         ));
     }
 
@@ -103,6 +171,55 @@ final class NetbankReusableFundingAddressProvider
             providerStatus: strtolower($this->requiredTransactionValue($transaction, 'status')),
             occurredAt: $this->optionalDate(data_get($transaction, 'date')),
             settledAt: $this->settledAt($transaction),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $transaction
+     */
+    private function providerObservation(
+        array $transaction,
+        StandingFundingObservationRequestData $request,
+        string $providerAccountNumber,
+    ): ProviderFundingObservationData {
+        $transactionId = $this->requiredTransactionValue($transaction, 'transaction_id');
+        $grossAmountMinor = $this->amountMinor($transaction);
+        $currency = $this->currency((string) data_get($transaction, 'amount.cur'));
+        $feeAmountMinor = $this->feeAmountMinor($transaction, $currency);
+
+        if ($feeAmountMinor > $grossAmountMinor) {
+            throw new InvalidArgumentException('NetBank transaction fees exceed the incoming amount.');
+        }
+
+        return new ProviderFundingObservationData(
+            provider: self::Provider,
+            providerTransactionId: $transactionId,
+            grossAmountMinor: $grossAmountMinor,
+            feeAmountMinor: $feeAmountMinor,
+            netAmountMinor: $grossAmountMinor - $feeAmountMinor,
+            currency: $currency,
+            providerStatus: strtolower($this->requiredTransactionValue($transaction, 'status')),
+            verificationSource: 'netbank-vca-transaction-history',
+            payloadHash: hash('sha256', json_encode(
+                $this->canonicalize($transaction),
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES,
+            )),
+            providerOperationId: $this->optionalString(data_get($transaction, 'operation_id')),
+            requestId: $this->optionalString(data_get($transaction, 'reference_id')),
+            fundingAddress: 'sha256:'.hash('sha256', $request->fundingAddress),
+            providerAccountReference: 'sha256:'.hash('sha256', $providerAccountNumber),
+            occurredAt: $this->optionalDate(data_get($transaction, 'date')),
+            settledAt: $this->settledAt($transaction),
+            webhookReceiptId: $request->webhookReceiptId,
+            metadata: [
+                'description' => $this->optionalString(data_get($transaction, 'description')),
+                'type' => $this->optionalString(data_get($transaction, 'type')),
+                'settlement_rail' => $this->optionalString(data_get($transaction, 'settlement_rail')),
+                'destination_verified' => true,
+                'address_purpose' => $request->purpose->value,
+                'expected_currency_matches' => $currency === $this->currency($request->currency),
+                'trigger' => strtolower(trim($request->verificationSource)),
+            ],
         );
     }
 
@@ -177,6 +294,17 @@ final class NetbankReusableFundingAddressProvider
     private function fundingAddress(string $ownerReference, string $alias): string
     {
         return $alias.$this->numericReference($ownerReference);
+    }
+
+    private function standingAddressReference(StandingFundingAddressRequestData $request): string
+    {
+        return implode('|', [
+            'standing-funding-address',
+            trim($request->ownerReference),
+            trim($request->accountReference),
+            $request->purpose->value,
+            $this->currency($request->currency),
+        ]);
     }
 
     private function assertFundingAddress(string $fundingAddress, string $alias): void
