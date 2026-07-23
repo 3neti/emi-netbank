@@ -15,6 +15,7 @@ use LBHurtado\EmiCore\Data\Funding\ProviderFundingObservationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookReceiptData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookRequestData;
 use LBHurtado\EmiCore\Data\Funding\WebhookAuthenticationData;
+use LBHurtado\PaymentGateway\Exceptions\NetbankFundingAmbiguous;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingNotVerified;
 
@@ -150,9 +151,9 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
 
         $transaction = match (true) {
             count($exact) === 1 => $exact[0],
-            count($exact) > 1 => throw NetbankFundingNotVerified::ambiguous(),
+            count($exact) > 1 => throw NetbankFundingAmbiguous::multipleTransactions(),
             count($incoming) === 1 => $incoming[0],
-            default => throw NetbankFundingNotVerified::ambiguous(),
+            default => throw NetbankFundingAmbiguous::multipleTransactions(),
         };
 
         $grossAmountMinor = $this->amountMinor($transaction);

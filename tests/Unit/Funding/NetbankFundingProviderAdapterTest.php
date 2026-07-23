@@ -12,6 +12,9 @@ use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookReceiptData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookRequestData;
 use LBHurtado\EmiCore\Data\Funding\WebhookAuthenticationData;
+use LBHurtado\EmiCore\Exceptions\ProviderFundingNotObserved;
+use LBHurtado\EmiCore\Exceptions\ProviderFundingVerificationIndeterminate;
+use LBHurtado\PaymentGateway\Exceptions\NetbankFundingAmbiguous;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingNotVerified;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingRequestFailed;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
@@ -228,21 +231,35 @@ it('does not mark a pending provider observation as settled', function () {
         ->and($observation->settledAt)->toBeNull();
 });
 
-it('fails closed when an incoming credit cannot be selected safely', function (array $transactions, string $message) {
+it('fails closed when an incoming credit cannot be selected safely', function (
+    array $transactions,
+    string $exception,
+    string $message,
+) {
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
         'https://api.netbank.test/v1/vca/*/transactions*' => Http::response(['transactions' => $transactions]),
     ]);
 
     expect(fn () => app(NetbankFundingProviderAdapter::class)->verifyFunding(verification()))
-        ->toThrow(NetbankFundingNotVerified::class, $message);
+        ->toThrow($exception, $message);
 })->with([
-    'no credit' => [[], 'did not return an incoming VCA transaction'],
+    'no credit' => [
+        [],
+        NetbankFundingNotVerified::class,
+        'did not return an incoming VCA transaction',
+    ],
     'multiple exact credits' => [
         [netbankTransaction(), netbankTransaction(transactionId: 'transaction-456')],
+        NetbankFundingAmbiguous::class,
         'multiple VCA transactions',
     ],
 ]);
+
+it('maps absent and ambiguous NetBank evidence to provider-neutral outcomes', function () {
+    expect(new NetbankFundingNotVerified('absent'))->toBeInstanceOf(ProviderFundingNotObserved::class)
+        ->and(new NetbankFundingAmbiguous('ambiguous'))->toBeInstanceOf(ProviderFundingVerificationIndeterminate::class);
+});
 
 it('does not disclose provider response bodies when an API request fails', function () {
     Http::fake([
