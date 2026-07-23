@@ -80,7 +80,7 @@ class NetbankFundingApiClient
         int $amountMinor,
         string $currency,
     ): string {
-        $response = $this->api()->post($this->requiredConfig('qr_endpoint'), [
+        return $this->generateQrCodeFromPayload([
             'merchant_name' => $this->requiredConfig('qr_merchant_name'),
             'merchant_city' => $this->requiredConfig('qr_merchant_city'),
             'qr_type' => 'Dynamic',
@@ -92,7 +92,30 @@ class NetbankFundingApiClient
                 'num' => (string) $amountMinor,
             ],
         ]);
+    }
 
+    public function generateReusableQrCode(string $vcaNumber, string $currency): string
+    {
+        return $this->generateQrCodeFromPayload([
+            'merchant_name' => $this->requiredConfig('qr_merchant_name'),
+            'merchant_city' => $this->requiredConfig('qr_merchant_city'),
+            'qr_type' => 'Static',
+            'qr_transaction_type' => 'P2M',
+            'destination_account' => $vcaNumber,
+            'resolution' => (int) config('payment-gateway.netbank.funding.qr_resolution', 480),
+            'amount' => [
+                'cur' => $currency,
+                'num' => '',
+            ],
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function generateQrCodeFromPayload(array $payload): string
+    {
+        $response = $this->api()->post($this->requiredConfig('qr_endpoint'), $payload);
         $this->assertSuccessful($response, 'generate-qrph');
         $encoded = $response->json('qr_code');
 
