@@ -50,6 +50,7 @@ it('registers as a provider-neutral funding adapter', function () {
     $adapter = app(NetbankFundingProviderAdapter::class);
 
     expect($adapter)->toBeInstanceOf(FundingProviderAdapter::class)
+        ->and($adapter->providerCode())->toBe('netbank')
         ->and(collect(app()->tagged('emi.funding-provider-adapters'))->contains($adapter))->toBeTrue();
 });
 

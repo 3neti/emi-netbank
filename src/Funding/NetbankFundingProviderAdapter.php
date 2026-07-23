@@ -26,6 +26,11 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
         private readonly NetbankFundingApiClient $client,
     ) {}
 
+    public function providerCode(): string
+    {
+        return self::Provider;
+    }
+
     public function createFundingInstructions(FundingInstructionRequestData $request): FundingInstructionsData
     {
         $this->assertProvider($request->provider);
