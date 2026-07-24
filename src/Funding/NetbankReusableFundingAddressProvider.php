@@ -20,6 +20,8 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
 {
     private const Provider = 'netbank';
 
+    private const IncomingCreditNormalizationVersion = 'netbank-standing-credit-v2';
+
     public function __construct(
         private readonly NetbankFundingApiClient $client,
         private readonly NetbankStandingAddressProfile $profile,
@@ -181,11 +183,6 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
         $transactionId = $this->requiredTransactionValue($transaction, 'transaction_id');
         $grossAmountMinor = $this->amountMinor($transaction);
         $currency = $this->currency((string) data_get($transaction, 'amount.cur'));
-        $feeAmountMinor = $this->feeAmountMinor($transaction, $currency);
-
-        if ($feeAmountMinor > $grossAmountMinor) {
-            throw new InvalidArgumentException('NetBank transaction fees exceed the incoming amount.');
-        }
 
         return new NetbankReusableFundingObservationData(
             transactionHash: hash('sha256', $transactionId),
@@ -194,8 +191,8 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES,
             )),
             grossAmountMinor: $grossAmountMinor,
-            feeAmountMinor: $feeAmountMinor,
-            netAmountMinor: $grossAmountMinor - $feeAmountMinor,
+            feeAmountMinor: 0,
+            netAmountMinor: $grossAmountMinor,
             currency: $currency,
             providerStatus: strtolower($this->requiredTransactionValue($transaction, 'status')),
             occurredAt: $this->optionalDate(data_get($transaction, 'date')),
@@ -214,18 +211,13 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
         $transactionId = $this->requiredTransactionValue($transaction, 'transaction_id');
         $grossAmountMinor = $this->amountMinor($transaction);
         $currency = $this->currency((string) data_get($transaction, 'amount.cur'));
-        $feeAmountMinor = $this->feeAmountMinor($transaction, $currency);
-
-        if ($feeAmountMinor > $grossAmountMinor) {
-            throw new InvalidArgumentException('NetBank transaction fees exceed the incoming amount.');
-        }
 
         return new ProviderFundingObservationData(
             provider: self::Provider,
             providerTransactionId: $transactionId,
             grossAmountMinor: $grossAmountMinor,
-            feeAmountMinor: $feeAmountMinor,
-            netAmountMinor: $grossAmountMinor - $feeAmountMinor,
+            feeAmountMinor: 0,
+            netAmountMinor: $grossAmountMinor,
             currency: $currency,
             providerStatus: strtolower($this->requiredTransactionValue($transaction, 'status')),
             verificationSource: 'netbank-vca-transaction-history',
@@ -248,6 +240,8 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
                 'address_purpose' => $request->purpose->value,
                 'expected_currency_matches' => $currency === $this->currency($request->currency),
                 'trigger' => strtolower(trim($request->verificationSource)),
+                'normalization_version' => self::IncomingCreditNormalizationVersion,
+                'incoming_credit_amount_is_net_received' => true,
             ],
         );
     }
@@ -327,31 +321,6 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
         }
 
         return (int) $amount;
-    }
-
-    private function feeAmountMinor(array $transaction, string $currency): int
-    {
-        $total = 0;
-
-        foreach ((array) data_get($transaction, 'fees', []) as $fee) {
-            if (! is_array($fee)) {
-                throw new InvalidArgumentException('NetBank transaction fee has an invalid shape.');
-            }
-
-            if ($this->currency((string) data_get($fee, 'amount.cur', $currency)) !== $currency) {
-                throw new InvalidArgumentException('NetBank transaction fee currency does not match the incoming amount.');
-            }
-
-            $value = (string) data_get($fee, 'amount.num', '0');
-
-            if (preg_match('/\A\d+\z/', $value) !== 1) {
-                throw new InvalidArgumentException('NetBank transaction fee must use integer minor units.');
-            }
-
-            $total += (int) $value;
-        }
-
-        return $total;
     }
 
     private function settledAt(array $transaction): ?DateTimeImmutable

@@ -160,8 +160,8 @@ it('returns only sanitized incoming observations for the exact reusable VCA', fu
         ->and($observations[0]->transactionHash)->toBe(hash('sha256', 'transaction-123'))
         ->and($observations[0]->transactionHash)->not->toContain('transaction-123')
         ->and($observations[0]->grossAmountMinor)->toBe(25_000)
-        ->and($observations[0]->feeAmountMinor)->toBe(50)
-        ->and($observations[0]->netAmountMinor)->toBe(24_950)
+        ->and($observations[0]->feeAmountMinor)->toBe(0)
+        ->and($observations[0]->netAmountMinor)->toBe(25_000)
         ->and($observations[0]->currency)->toBe('PHP')
         ->and($observations[0]->providerStatus)->toBe('settled')
         ->and($observations[0]->occurredAt?->format(DATE_ATOM))->toBe('2026-07-23T01:05:00+00:00')
@@ -216,7 +216,8 @@ it('returns authoritative provider observations internally for standing address 
         ->and($observations[0]->providerOperationId)->toBeNull()
         ->and($observations[0]->requestId)->toBeNull()
         ->and($observations[0]->grossAmountMinor)->toBe(25_000)
-        ->and($observations[0]->netAmountMinor)->toBe(24_950)
+        ->and($observations[0]->feeAmountMinor)->toBe(0)
+        ->and($observations[0]->netAmountMinor)->toBe(25_000)
         ->and($observations[0]->fundingAddress)->toBe('sha256:'.hash('sha256', $address))
         ->and($observations[0]->providerAccountReference)
         ->toBe('sha256:'.hash('sha256', '113001000019'))
@@ -229,6 +230,8 @@ it('returns authoritative provider observations internally for standing address 
             'address_purpose' => 'account_funding',
             'expected_currency_matches' => true,
             'trigger' => 'operator',
+            'normalization_version' => 'netbank-standing-credit-v2',
+            'incoming_credit_amount_is_net_received' => true,
         ])
         ->and($observations[0]->metadata)
         ->not->toHaveKeys(['sender', 'account_number', 'raw_payload']);
