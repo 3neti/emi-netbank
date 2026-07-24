@@ -6,6 +6,10 @@ return [
         'token-end-point' => env('NETBANK_TOKEN_ENDPOINT'),
         'qr-end-point' => env('NETBANK_QR_ENDPOINT'),
         'status-endpoint' => env('NETBANK_STATUS_ENDPOINT'),
+        'balance-endpoint' => env(
+            'NETBANK_BALANCE_ENDPOINT',
+            env('NETBANK_FUNDING_BALANCE_ENDPOINT'),
+        ),
     ],
     'client' => [
         'id' => env('NETBANK_CLIENT_ID', ''),
@@ -16,7 +20,7 @@ return [
         'account_number' => env('NETBANK_SOURCE_ACCOUNT_NUMBER', ''),
         'sender' => [
             'customer_id' => env('NETBANK_SENDER_CUSTOMER_ID', ''),
-        'address' => [
+            'address' => [
                 'address1' => env('NETBANK_SENDER_ADDRESS_ADDRESS1', ''),
                 'city' => env('NETBANK_SENDER_ADDRESS_CITY', ''),
                 'country' => env('NETBANK_SENDER_ADDRESS_COUNTRY', 'PH'),

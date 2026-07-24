@@ -14,6 +14,7 @@ use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
 use LBHurtado\PaymentGateway\Gateways\Netbank\NetbankPaymentGateway;
 use LBHurtado\PaymentGateway\Gateways\Omnipay\OmnipayPaymentGateway;
+use LBHurtado\PaymentGateway\Support\NetbankProviderBalanceReader;
 use LBHurtado\PaymentGateway\Support\NetbankSettlementProvider;
 use LBHurtado\Wallet\Services\SystemUserResolverService;
 
@@ -46,6 +47,11 @@ class PaymentGatewayServiceProvider extends ServiceProvider
             'emi.settlement-providers',
             'emi.provider-readiness-probes',
         ]);
+        $this->app->singleton(NetbankProviderBalanceReader::class);
+        $this->app->tag(
+            NetbankProviderBalanceReader::class,
+            'emi.provider-balance-readers',
+        );
 
         $this->app->bind(PaymentGatewayInterface::class, function ($app) {
             // Check if we should use Omnipay implementation

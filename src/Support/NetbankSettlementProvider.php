@@ -29,6 +29,7 @@ final class NetbankSettlementProvider implements ProviderReadinessProbe, Settlem
             label: 'NetBank',
             capabilities: [
                 ProviderCapability::ReadinessProbe,
+                ProviderCapability::BalanceRead,
                 ProviderCapability::FundingEvidenceRead,
                 ProviderCapability::FundingInstructionIssue,
                 ProviderCapability::StandingFundingAddress,
@@ -81,6 +82,12 @@ final class NetbankSettlementProvider implements ProviderReadinessProbe, Settlem
         }
 
         $keys = match ($capability) {
+            ProviderCapability::BalanceRead => [
+                'client_id',
+                'client_secret',
+                'corporate_account_number',
+                'balance_endpoint',
+            ],
             ProviderCapability::FundingEvidenceRead => [
                 'client_id',
                 'client_secret',

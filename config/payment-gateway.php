@@ -29,6 +29,10 @@ return [
             'client_secret' => env('NETBANK_FUNDING_CLIENT_SECRET', env('NETBANK_CLIENT_SECRET')),
             'corporate_account_number' => env('NETBANK_FUNDING_CORPORATE_ACCOUNT_NUMBER', env('NETBANK_SOURCE_ACCOUNT_NUMBER')),
             'corporate_account_name' => env('NETBANK_FUNDING_CORPORATE_ACCOUNT_NAME', env('NETBANK_SOURCE_ACCOUNT_NAME')),
+            'balance_endpoint' => env(
+                'NETBANK_FUNDING_BALANCE_ENDPOINT',
+                env('NETBANK_BALANCE_ENDPOINT'),
+            ),
             'vca_alias' => env('NETBANK_FUNDING_VCA_ALIAS', env('NETBANK_CLIENT_ALIAS')),
             'reference_key' => env('NETBANK_FUNDING_REFERENCE_KEY', env('APP_KEY')),
             'standing_address' => [
