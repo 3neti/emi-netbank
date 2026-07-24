@@ -30,7 +30,6 @@ return [
             'corporate_account_number' => env('NETBANK_FUNDING_CORPORATE_ACCOUNT_NUMBER', env('NETBANK_SOURCE_ACCOUNT_NUMBER')),
             'corporate_account_name' => env('NETBANK_FUNDING_CORPORATE_ACCOUNT_NAME', env('NETBANK_SOURCE_ACCOUNT_NAME')),
             'vca_alias' => env('NETBANK_FUNDING_VCA_ALIAS', env('NETBANK_CLIENT_ALIAS')),
-            'vca_alias_token' => env('NETBANK_FUNDING_VCA_ALIAS_TOKEN'),
             'reference_key' => env('NETBANK_FUNDING_REFERENCE_KEY', env('APP_KEY')),
             'standing_address' => [
                 'scheme' => env(

@@ -36,7 +36,6 @@ beforeEach(function () {
         'corporate_account_number' => '113001000019',
         'corporate_account_name' => 'X Change Treasury',
         'vca_alias' => '91500',
-        'vca_alias_token' => 'configured-alias-token',
         'reference_key' => 'funding-reference-key',
         'qr_endpoint' => 'https://api.netbank.test/v1/qrph/generate',
         'qr_merchant_name' => 'X Change',
@@ -105,6 +104,9 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
             'access_token' => 'access-token',
             'expires_in' => 3600,
         ]),
+        'https://api.netbank.test/v1/vca/pre-transaction/token' => Http::response([
+            'vca_alias_token' => 'intent-registration-token',
+        ]),
         'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
         'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
         'https://api.netbank.test/v1/qrph/generate' => Http::response([
@@ -149,9 +151,15 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
         && $httpRequest['grant_type'] === 'client_credentials'
         && $httpRequest->hasHeader('Authorization', 'Basic '.base64_encode('client-id:client-secret')));
 
+    Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/vca/pre-transaction/token'
+        && $httpRequest->data() === [
+            'vca_alias' => '91500',
+            'account_number' => '113001000019',
+        ]);
+
     Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/vca/pre-transaction/register'
         && $httpRequest->data() === [
-            'vca_alias_token' => 'configured-alias-token',
+            'vca_alias_token' => 'intent-registration-token',
             'vca_reference_number' => substr((string) $instructions->providerReference, 5),
         ]);
 
@@ -179,7 +187,23 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
             'amount' => ['cur' => 'PHP', 'num' => '25000'],
         ]);
 
+    $providerRequestOrder = collect(Http::recorded())
+        ->map(fn (array $record): string => $record[0]->url())
+        ->filter(fn (string $url): bool => str_starts_with($url, 'https://api.netbank.test/'))
+        ->values()
+        ->all();
+
+    expect($providerRequestOrder)->toBe([
+        'https://api.netbank.test/v1/vca/pre-transaction/token',
+        'https://api.netbank.test/v1/vca/pre-transaction/register',
+        'https://api.netbank.test/v1/vca/create',
+        'https://api.netbank.test/v1/qrph/generate',
+    ]);
+
     Http::fake([
+        'https://api.netbank.test/v1/vca/pre-transaction/token' => Http::response([
+            'vca_alias_token' => 'retry-registration-token',
+        ]),
         'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
         'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
         'https://api.netbank.test/v1/qrph/generate' => Http::response([
@@ -197,6 +221,9 @@ it('uses a dedicated destination without reading shared routing values', functio
         'https://auth.netbank.test/oauth2/token' => Http::response([
             'access_token' => 'access-token',
             'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/vca/pre-transaction/token' => Http::response([
+            'vca_alias_token' => 'dedicated-registration-token',
         ]),
         'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
         'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
@@ -220,7 +247,7 @@ it('uses a dedicated destination without reading shared routing values', functio
         ->and($instructions->displayData['account_name'])->toBe('Dedicated Treasury');
 
     Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/vca/pre-transaction/register'
-        && $httpRequest->data()['vca_alias_token'] === 'dedicated-alias-token');
+        && $httpRequest->data()['vca_alias_token'] === 'dedicated-registration-token');
 
     Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/vca/create'
         && $httpRequest->data()['account_number'] === '991100001234');
@@ -249,11 +276,45 @@ it('generates a VCA alias token for an explicit account and alias', function () 
         ]);
 });
 
+it('stops before registration when NetBank token generation fails', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response([
+            'access_token' => 'access-token',
+            'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/vca/pre-transaction/token' => Http::response([
+            'message' => 'sensitive-provider-body',
+        ], 500),
+    ]);
+
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->createFundingInstructions(
+        new FundingInstructionRequestData(
+            provider: 'netbank',
+            fundingReference: 'FND-TOKEN-FAILURE',
+            amountMinor: 25_000,
+            currency: 'PHP',
+            accountReference: 'account-123',
+        ),
+    ))->toThrow(
+        NetbankFundingRequestFailed::class,
+        'generate-vca-alias-token',
+    );
+
+    Http::assertSentCount(2);
+    Http::assertNotSent(fn (Request $request): bool => str_contains(
+        $request->url(),
+        '/pre-transaction/register',
+    ));
+});
+
 it('fails safely when NetBank does not return a valid base64 png', function (mixed $qrCode) {
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response([
             'access_token' => 'access-token',
             'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/vca/pre-transaction/token' => Http::response([
+            'vca_alias_token' => 'qr-failure-registration-token',
         ]),
         'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
         'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
@@ -292,6 +353,12 @@ it('reuses the deterministic VCA when QR issuance is retried', function () {
     Http::fake(function (Request $request) use (&$qrAttempts) {
         if ($request->url() === 'https://auth.netbank.test/oauth2/token') {
             return Http::response(['access_token' => 'access-token']);
+        }
+
+        if ($request->url() === 'https://api.netbank.test/v1/vca/pre-transaction/token') {
+            return Http::response([
+                'vca_alias_token' => 'retry-registration-token-'.$qrAttempts,
+            ]);
         }
 
         if ($request->url() === 'https://api.netbank.test/v1/qrph/generate') {
@@ -347,7 +414,6 @@ it('requires every NetBank QR funding readiness field', function (string $key) {
     'corporate_account_number',
     'corporate_account_name',
     'vca_alias',
-    'vca_alias_token',
     'reference_key',
     'qr_endpoint',
     'qr_merchant_name',

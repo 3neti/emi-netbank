@@ -50,7 +50,15 @@ NETBANK_FUNDING_STANDING_HMAC_KEY=base64:<dedicated-secret-of-at-least-32-bytes>
 
 `netbank-account-hmac-v2` uses a purpose-separated HMAC over the immutable Account reference and a persisted collision counter. Its key is dedicated to this derivation domain and never falls back to `APP_KEY`. Keep the key stable in managed secret storage. A new key affects only new bindings because consumers must persist and reopen the exact issued address.
 
-`NETBANK_FUNDING_VCA_ALIAS_TOKEN` is required by registered one-time VCA/Funding Intent operations. It is not required to render a shared reusable static QR for an already-routable 16-digit funding address.
+Registered one-time VCA/Funding Intent operations generate a fresh
+pre-transaction validation token immediately before each new VCA registration.
+The token exists only in memory for that registration and is never configured,
+persisted, displayed, or logged. NetBank confirmed on 2026-07-24 that generating
+a new token does not overwrite or invalidate an existing token; generation must
+therefore never be presented as rotation or revocation.
+
+The shared reusable static QR does not register a VCA and does not generate or
+consume a pre-transaction validation token.
 
 For VCA history rows classified as incoming credits (`Credit` and `EXTERNAL_TRANSFER_INCOMING`), NetBank's `amount.num` is normalized as the credited amount received. The provider `fees` collection is not subtracted from it a second time. These observations carry normalization version `netbank-standing-credit-v2`, with normalized fee `0` and net equal to the credited amount. A version change creates new immutable normalized evidence in `emi-core`; it never rewrites the raw provider payload or an earlier observation.
 

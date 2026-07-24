@@ -37,10 +37,10 @@ class NetbankFundingApiClient
         return trim($token);
     }
 
-    public function registerPreTransactionReference(string $reference, ?string $aliasToken = null): void
+    public function registerPreTransactionReference(string $reference, string $aliasToken): void
     {
         $response = $this->api()->post('/v1/vca/pre-transaction/register', [
-            'vca_alias_token' => $aliasToken ?? $this->requiredConfig('vca_alias_token'),
+            'vca_alias_token' => $aliasToken,
             'vca_reference_number' => $reference,
         ]);
 

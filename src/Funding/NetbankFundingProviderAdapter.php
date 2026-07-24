@@ -52,7 +52,11 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
         }
 
         if ((bool) config('payment-gateway.netbank.funding.pre_transaction_validation_enabled', true)) {
-            $this->client->registerPreTransactionReference($reference, $routing['alias_token']);
+            $aliasToken = $this->client->generateAliasToken(
+                $routing['account_number'],
+                $alias,
+            );
+            $this->client->registerPreTransactionReference($reference, $aliasToken);
         }
 
         if ((bool) config('payment-gateway.netbank.funding.exact_limits_enabled', true)) {
@@ -235,7 +239,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
     }
 
     /**
-     * @return array{account_number: string, account_name: string, alias: string, alias_token: string}
+     * @return array{account_number: string, account_name: string, alias: string}
      */
     private function instructionRoutingProfile(?FundingDestinationData $destination): array
     {
@@ -258,7 +262,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
     }
 
     /**
-     * @return array{account_number: string, account_name: string, alias: string, alias_token: string}
+     * @return array{account_number: string, account_name: string, alias: string}
      */
     private function routingProfile(?FundingDestinationData $destination): array
     {
@@ -273,8 +277,6 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
         $accountNumber = $destination?->bankAccountNumber ?? $this->requiredConfig('corporate_account_number');
         $accountName = $destination?->bankAccountName ?? $this->requiredConfig('corporate_account_name');
         $alias = $destination?->routingAlias ?? $this->requiredConfig('vca_alias');
-        $aliasToken = $destination?->routingCredential ?? $this->requiredConfig('vca_alias_token');
-
         if (preg_match('/\A[0-9-]{8,32}\z/', $accountNumber) !== 1) {
             throw new NetbankFundingConfigurationException('NetBank corporate account number must contain 8 to 32 digits or hyphens.');
         }
@@ -283,15 +285,14 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
             throw new NetbankFundingConfigurationException('NetBank VCA alias must contain exactly five digits.');
         }
 
-        if (trim($accountName) === '' || trim($aliasToken) === '') {
-            throw new NetbankFundingConfigurationException('NetBank dedicated routing requires an account name and VCA alias token.');
+        if (trim($accountName) === '') {
+            throw new NetbankFundingConfigurationException('NetBank dedicated routing requires an account name.');
         }
 
         return [
             'account_number' => $accountNumber,
             'account_name' => trim($accountName),
             'alias' => $alias,
-            'alias_token' => trim($aliasToken),
         ];
     }
 
