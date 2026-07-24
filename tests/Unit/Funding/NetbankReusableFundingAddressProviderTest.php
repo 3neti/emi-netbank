@@ -6,6 +6,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use LBHurtado\EmiCore\Contracts\StandingFundingAddressProvider;
+use LBHurtado\EmiCore\Data\Funding\FundingQrMerchantData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingObservationRequestData;
 use LBHurtado\EmiCore\Enums\FundingAddressPurpose;
@@ -80,6 +81,71 @@ it('creates a stable open-amount static NetBank QR without registering or limiti
         ]);
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/pre-transaction/'));
     Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '/v1/vca/create'));
+});
+
+it('maps provider-neutral merchant metadata into the reusable QR payload', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response([
+            'access_token' => 'access-token',
+            'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/qrph/generate' => Http::response([
+            'qr_code' => reusableFundingValidPngBase64(),
+        ]),
+    ]);
+
+    $address = app(NetbankReusableFundingAddressProvider::class)
+        ->createStandingFundingAddress(new StandingFundingAddressRequestData(
+            ownerReference: 'App\\Models\\User:5',
+            accountReference: 'wallet:01JACCOUNT',
+            purpose: FundingAddressPurpose::AccountFunding,
+            currency: 'PHP',
+            routingReference: '09173011987',
+            qrMerchant: new FundingQrMerchantData(
+                displayName: 'Lester Store',
+                city: 'Makati',
+                categoryCode: '0000',
+                profileReference: 'merchant:01JMERCHANT',
+                profileFingerprint: 'sha256:merchant-profile',
+            ),
+        ));
+
+    expect($address->displayData)->toMatchArray([
+        'merchant_name' => 'Lester Store',
+        'merchant_city' => 'Makati',
+        'merchant_category_code' => '0000',
+        'merchant_profile_reference' => 'merchant:01JMERCHANT',
+        'merchant_profile_fingerprint' => 'sha256:merchant-profile',
+        'merchant_metadata_version' => 'funding-qr-merchant-v1',
+    ]);
+
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.netbank.test/v1/qrph/generate'
+        && data_get($request->data(), 'merchant_name') === 'Lester Store'
+        && data_get($request->data(), 'merchant_city') === 'Makati'
+        && data_get($request->data(), 'destination_account') === $address->fundingAddress);
+});
+
+it('rejects invalid merchant metadata before calling NetBank', function () {
+    Http::fake();
+
+    expect(fn () => app(NetbankReusableFundingAddressProvider::class)
+        ->createStandingFundingAddress(new StandingFundingAddressRequestData(
+            ownerReference: 'App\\Models\\User:5',
+            accountReference: 'wallet:01JACCOUNT',
+            purpose: FundingAddressPurpose::AccountFunding,
+            currency: 'PHP',
+            routingReference: '09173011987',
+            qrMerchant: new FundingQrMerchantData(
+                displayName: str_repeat('X', 26),
+                city: 'Manila',
+            ),
+        )))
+        ->toThrow(
+            NetbankFundingConfigurationException::class,
+            'merchant name must contain 1 to 25 characters',
+        );
+
+    Http::assertNothingSent();
 });
 
 it('implements the provider-neutral standing address contract with purpose-separated addresses', function () {

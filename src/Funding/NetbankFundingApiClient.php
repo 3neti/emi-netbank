@@ -9,6 +9,7 @@ use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
+use LBHurtado\EmiCore\Data\Funding\FundingQrMerchantData;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingRequestFailed;
 
@@ -79,10 +80,12 @@ class NetbankFundingApiClient
         string $vcaNumber,
         int $amountMinor,
         string $currency,
+        ?FundingQrMerchantData $merchant = null,
     ): string {
+        $merchantPayload = $this->merchantPayload($merchant);
+
         return $this->generateQrCodeFromPayload([
-            'merchant_name' => $this->requiredConfig('qr_merchant_name'),
-            'merchant_city' => $this->requiredConfig('qr_merchant_city'),
+            ...$merchantPayload,
             'qr_type' => 'Dynamic',
             'qr_transaction_type' => 'P2M',
             'destination_account' => $vcaNumber,
@@ -94,11 +97,15 @@ class NetbankFundingApiClient
         ]);
     }
 
-    public function generateReusableQrCode(string $vcaNumber, string $currency): string
-    {
+    public function generateReusableQrCode(
+        string $vcaNumber,
+        string $currency,
+        ?FundingQrMerchantData $merchant = null,
+    ): string {
+        $merchantPayload = $this->merchantPayload($merchant);
+
         return $this->generateQrCodeFromPayload([
-            'merchant_name' => $this->requiredConfig('qr_merchant_name'),
-            'merchant_city' => $this->requiredConfig('qr_merchant_city'),
+            ...$merchantPayload,
             'qr_type' => 'Static',
             'qr_transaction_type' => 'P2M',
             'destination_account' => $vcaNumber,
@@ -124,6 +131,63 @@ class NetbankFundingApiClient
         }
 
         return $encoded;
+    }
+
+    /**
+     * @return array{merchant_name: string, merchant_city: string}
+     */
+    private function merchantPayload(?FundingQrMerchantData $merchant): array
+    {
+        $name = $this->normalizedMerchantValue(
+            $merchant?->displayName ?? $this->requiredConfig('qr_merchant_name'),
+            'name',
+            (int) config(
+                'payment-gateway.netbank.funding.qr_merchant_name_max_length',
+                25,
+            ),
+        );
+        $city = $this->normalizedMerchantValue(
+            $merchant?->city ?? $this->requiredConfig('qr_merchant_city'),
+            'city',
+            (int) config(
+                'payment-gateway.netbank.funding.qr_merchant_city_max_length',
+                15,
+            ),
+        );
+
+        return [
+            'merchant_name' => $name,
+            'merchant_city' => $city,
+        ];
+    }
+
+    private function normalizedMerchantValue(
+        string $value,
+        string $field,
+        int $maximumLength,
+    ): string {
+        if (
+            ! mb_check_encoding($value, 'UTF-8')
+            || preg_match('/[\p{Cc}\p{Cf}]/u', $value) === 1
+        ) {
+            throw new NetbankFundingConfigurationException(
+                "NetBank QR merchant {$field} contains unsupported characters.",
+            );
+        }
+
+        $normalized = preg_replace('/\s+/u', ' ', trim($value)) ?? trim($value);
+
+        if (
+            $normalized === ''
+            || $maximumLength < 1
+            || mb_strlen($normalized, 'UTF-8') > $maximumLength
+        ) {
+            throw new NetbankFundingConfigurationException(
+                "NetBank QR merchant {$field} must contain 1 to {$maximumLength} characters.",
+            );
+        }
+
+        return $normalized;
     }
 
     /**

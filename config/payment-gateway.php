@@ -49,6 +49,8 @@ return [
             ),
             'qr_merchant_name' => env('NETBANK_FUNDING_QR_MERCHANT_NAME', 'X Change'),
             'qr_merchant_city' => env('NETBANK_FUNDING_QR_MERCHANT_CITY', 'Manila'),
+            'qr_merchant_name_max_length' => (int) env('NETBANK_FUNDING_QR_MERCHANT_NAME_MAX_LENGTH', 25),
+            'qr_merchant_city_max_length' => (int) env('NETBANK_FUNDING_QR_MERCHANT_CITY_MAX_LENGTH', 15),
             'qr_resolution' => env('NETBANK_FUNDING_QR_RESOLUTION', 480),
             'pre_transaction_validation_enabled' => env('NETBANK_FUNDING_PRE_TRANSACTION_VALIDATION_ENABLED', true),
             'exact_limits_enabled' => env('NETBANK_FUNDING_EXACT_LIMITS_ENABLED', true),
