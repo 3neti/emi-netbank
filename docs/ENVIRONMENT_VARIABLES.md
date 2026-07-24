@@ -52,6 +52,8 @@ NETBANK_FUNDING_STANDING_HMAC_KEY=base64:<dedicated-secret-of-at-least-32-bytes>
 
 `NETBANK_FUNDING_VCA_ALIAS_TOKEN` is required by registered one-time VCA/Funding Intent operations. It is not required to render a shared reusable static QR for an already-routable 16-digit funding address.
 
+For VCA history rows classified as incoming credits (`Credit` and `EXTERNAL_TRANSFER_INCOMING`), NetBank's `amount.num` is normalized as the credited amount received. The provider `fees` collection is not subtracted from it a second time. These observations carry normalization version `netbank-standing-credit-v2`, with normalized fee `0` and net equal to the credited amount. A version change creates new immutable normalized evidence in `emi-core`; it never rewrites the raw provider payload or an earlier observation.
+
 ### Authentication (Required)
 
 These credentials are provided by NetBank when you register for API access.
