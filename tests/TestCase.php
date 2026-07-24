@@ -33,6 +33,7 @@ abstract class TestCase extends BaseTestCase
     protected function getPackageProviders($app)
     {
         return [
+            \LBHurtado\EmiCore\EmiCoreServiceProvider::class,
             \LBHurtado\PaymentGateway\PaymentGatewayServiceProvider::class,
             \LBHurtado\Wallet\WalletServiceProvider::class,
             \LBHurtado\ModelChannel\ModelChannelServiceProvider::class,
