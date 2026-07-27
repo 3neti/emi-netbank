@@ -485,6 +485,8 @@ it('verifies a settled incoming credit from authoritative VCA history', function
             'destination_verified' => true,
             'expected_amount_matches' => true,
             'expected_currency_matches' => true,
+            'normalization_version' => 'netbank-incoming-credit-v2',
+            'reported_fee_mirrors_gross_amount' => false,
         ])
         ->and($observation->metadata)->not->toHaveKeys(['sender', 'account_number']);
 
@@ -492,6 +494,32 @@ it('verifies a settled incoming credit from authoritative VCA history', function
         && $request->method() === 'GET'
         && $request->data()['account_number'] === '113001000019'
         && $request->data()['limit'] === 100);
+});
+
+it('treats a reported fee that mirrors the full incoming credit as zero', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [netbankTransaction(
+                amountMinor: 13_799,
+                feeAmountMinor: 13_799,
+            )],
+        ]),
+    ]);
+
+    $verification = verification();
+    $verification->expectedAmountMinor = 13_799;
+    $observation = app(NetbankFundingProviderAdapter::class)->verifyFunding(
+        $verification,
+    );
+
+    expect($observation->grossAmountMinor)->toBe(13_799)
+        ->and($observation->feeAmountMinor)->toBe(0)
+        ->and($observation->netAmountMinor)->toBe(13_799)
+        ->and($observation->metadata['normalization_version'])
+        ->toBe('netbank-incoming-credit-v2')
+        ->and($observation->metadata['reported_fee_mirrors_gross_amount'])
+        ->toBeTrue();
 });
 
 it('verifies dedicated funding against the snapshotted corporate account', function () {
@@ -644,6 +672,7 @@ function netbankTransaction(
     string $status = 'Settled',
     ?array $statusDetails = null,
     string $transactionId = 'transaction-123',
+    int $feeAmountMinor = 50,
 ): array {
     return [
         'amount' => ['cur' => $currency, 'num' => (string) $amountMinor],
@@ -653,7 +682,12 @@ function netbankTransaction(
             'account_alias' => '915001234567890123456',
             'account_number' => 'sensitive-destination-account',
         ],
-        'fees' => [['amount' => ['cur' => $currency, 'num' => '50']]],
+        'fees' => [[
+            'amount' => [
+                'cur' => $currency,
+                'num' => (string) $feeAmountMinor,
+            ],
+        ]],
         'operation_id' => 'operation-456',
         'reference_id' => 'reference-789',
         'sender' => [

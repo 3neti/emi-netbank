@@ -181,7 +181,12 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
 
         $grossAmountMinor = $this->amountMinor($transaction);
         $transactionCurrency = $this->transactionCurrency($transaction);
-        $feeAmountMinor = $this->feeAmountMinor($transaction, $transactionCurrency);
+        $reportedFeeAmountMinor = $this->feeAmountMinor(
+            $transaction,
+            $transactionCurrency,
+        );
+        $feeMirrorsGrossAmount = $reportedFeeAmountMinor === $grossAmountMinor;
+        $feeAmountMinor = $feeMirrorsGrossAmount ? 0 : $reportedFeeAmountMinor;
 
         if ($feeAmountMinor > $grossAmountMinor) {
             throw new InvalidArgumentException('NetBank transaction fees exceed the incoming amount.');
@@ -216,6 +221,8 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
                 'destination_verified' => true,
                 'expected_amount_matches' => $grossAmountMinor === $verification->expectedAmountMinor,
                 'expected_currency_matches' => $transactionCurrency === $currency,
+                'normalization_version' => 'netbank-incoming-credit-v2',
+                'reported_fee_mirrors_gross_amount' => $feeMirrorsGrossAmount,
             ],
         );
     }
