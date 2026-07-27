@@ -161,6 +161,13 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
             $this->client->transactions($vcaNumber, $routing['account_number']),
             fn (array $transaction): bool => $this->isIncomingCredit($transaction, $vcaNumber),
         ));
+        $incoming = array_values(array_filter(
+            $incoming,
+            fn (array $transaction): bool => $this->isInsideVerificationWindow(
+                $transaction,
+                $verification,
+            ),
+        ));
 
         if ($incoming === []) {
             throw NetbankFundingNotVerified::noIncomingTransaction();
@@ -332,6 +339,29 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
     private function transactionCurrency(array $transaction): string
     {
         return $this->currency((string) data_get($transaction, 'amount.cur'));
+    }
+
+    private function isInsideVerificationWindow(
+        array $transaction,
+        FundingVerificationData $verification,
+    ): bool {
+        if (
+            $verification->observedAfter === null
+            && $verification->observedBefore === null
+        ) {
+            return true;
+        }
+
+        $occurredAt = $this->optionalDate(data_get($transaction, 'date'));
+
+        if ($occurredAt === null) {
+            return false;
+        }
+
+        return ($verification->observedAfter === null
+                || $occurredAt >= $verification->observedAfter)
+            && ($verification->observedBefore === null
+                || $occurredAt <= $verification->observedBefore);
     }
 
     private function feeAmountMinor(array $transaction, string $currency): int

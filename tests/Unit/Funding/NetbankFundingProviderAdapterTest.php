@@ -541,6 +541,37 @@ it('verifies dedicated funding against the snapshotted corporate account', funct
         && $request->data()['account_number'] === '991100001234');
 });
 
+it('selects an exact credit only inside the requested observation window', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [
+                netbankTransaction(
+                    transactionId: 'outside-window',
+                    occurredAt: '2026-07-27T02:45:00.000Z',
+                ),
+                netbankTransaction(
+                    transactionId: 'inside-window',
+                    occurredAt: '2026-07-27T03:05:00.000Z',
+                ),
+            ],
+        ]),
+    ]);
+
+    $verification = verification();
+    $verification->observedAfter = new DateTimeImmutable(
+        '2026-07-27T03:00:00+00:00',
+    );
+    $verification->observedBefore = new DateTimeImmutable(
+        '2026-07-27T03:10:00+00:00',
+    );
+
+    $observation = app(NetbankFundingProviderAdapter::class)
+        ->verifyFunding($verification);
+
+    expect($observation->providerTransactionId)->toBe('inside-window');
+});
+
 it('preserves a mismatched observation for suspense instead of claiming it matches', function () {
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
@@ -673,10 +704,11 @@ function netbankTransaction(
     ?array $statusDetails = null,
     string $transactionId = 'transaction-123',
     int $feeAmountMinor = 50,
+    string $occurredAt = '2026-07-23T01:05:00.000Z',
 ): array {
     return [
         'amount' => ['cur' => $currency, 'num' => (string) $amountMinor],
-        'date' => '2026-07-23T01:05:00.000Z',
+        'date' => $occurredAt,
         'description' => 'EXTERNAL_TRANSFER_INCOMING',
         'destination_account' => [
             'account_alias' => '915001234567890123456',
