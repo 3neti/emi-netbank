@@ -15,6 +15,7 @@ use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
 use LBHurtado\PaymentGateway\Gateways\Netbank\NetbankPaymentGateway;
 use LBHurtado\PaymentGateway\Gateways\Omnipay\OmnipayPaymentGateway;
 use LBHurtado\PaymentGateway\Support\NetbankProviderBalanceReader;
+use LBHurtado\PaymentGateway\Support\NetbankProviderLivePreflightProbe;
 use LBHurtado\PaymentGateway\Support\NetbankSettlementProvider;
 use LBHurtado\Wallet\Services\SystemUserResolverService;
 
@@ -51,6 +52,11 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         $this->app->tag(
             NetbankProviderBalanceReader::class,
             'emi.provider-balance-readers',
+        );
+        $this->app->singleton(NetbankProviderLivePreflightProbe::class);
+        $this->app->tag(
+            NetbankProviderLivePreflightProbe::class,
+            'emi.provider-live-preflight-probes',
         );
 
         $this->app->bind(PaymentGatewayInterface::class, function ($app) {

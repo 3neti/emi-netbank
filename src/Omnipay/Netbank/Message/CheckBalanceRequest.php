@@ -2,7 +2,10 @@
 
 namespace LBHurtado\PaymentGateway\Omnipay\Netbank\Message;
 
+use Illuminate\Support\Facades\Log;
 use LBHurtado\PaymentGateway\Omnipay\Netbank\Traits\HasOAuth2;
+use LBHurtado\PaymentGateway\Support\NetbankLivePreflightFailureMapper;
+use Omnipay\Common\Exception\InvalidRequestException;
 use Omnipay\Common\Message\AbstractRequest;
 
 /**
@@ -62,7 +65,7 @@ class CheckBalanceRequest extends AbstractRequest
     /**
      * Validate the request
      *
-     * @throws \Omnipay\Common\Exception\InvalidRequestException
+     * @throws InvalidRequestException
      */
     public function getData()
     {
@@ -101,14 +104,15 @@ class CheckBalanceRequest extends AbstractRequest
             return $this->response = new CheckBalanceResponse($this, $responseData);
 
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error('[CheckBalanceRequest] Request failed', [
-                'endpoint' => $this->getEndpoint(),
-                'error' => $e->getMessage(),
+            $failureCode = NetbankLivePreflightFailureMapper::fromThrowable($e);
+            Log::error('[CheckBalanceRequest] Request failed', [
+                'failure_code' => $failureCode->value,
             ]);
 
             return $this->response = new CheckBalanceResponse($this, [
                 'status' => 'error',
-                'message' => $e->getMessage(),
+                'message' => 'NetBank balance request failed.',
+                'code' => $failureCode->value,
             ]);
         }
     }

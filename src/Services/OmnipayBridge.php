@@ -2,23 +2,24 @@
 
 namespace LBHurtado\PaymentGateway\Services;
 
-use LBHurtado\PaymentGateway\Data\Disburse\DisburseResponseData;
+use Bavix\Wallet\Interfaces\Wallet;
+use Bavix\Wallet\Models\Transaction;
+use Brick\Money\Money;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use LBHurtado\EmiCore\Enums\ProviderLivePreflightFailureCode;
+use LBHurtado\EmiCore\Enums\SettlementRail as EmiSettlementRail;
+use LBHurtado\Merchant\Contracts\MerchantInterface;
+use LBHurtado\MoneyIssuer\Support\BankRegistry;
 use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
 use LBHurtado\PaymentGateway\Data\Disburse\DisburseInputData;
+use LBHurtado\PaymentGateway\Data\Disburse\DisburseResponseData;
 use LBHurtado\PaymentGateway\Data\Wallet\BalanceData;
-use LBHurtado\Merchant\Contracts\MerchantInterface;
-
-use LBHurtado\EmiCore\Enums\SettlementRail as EmiSettlementRail;
+use LBHurtado\PaymentGateway\Enums\DisbursementStatus;
 use LBHurtado\PaymentGateway\Enums\SettlementRail;
-
+use LBHurtado\PaymentGateway\Support\NetbankLivePreflightFailureMapper;
 use LBHurtado\Wallet\Events\DisbursementConfirmed;
-use LBHurtado\MoneyIssuer\Support\BankRegistry;
 use Omnipay\Common\GatewayInterface;
-use Bavix\Wallet\Models\Transaction;
-use Illuminate\Support\Facades\Log;
-use Bavix\Wallet\Interfaces\Wallet;
-use Illuminate\Support\Facades\DB;
-use Brick\Money\Money;
 
 /**
  * Bridge between Omnipay gateways and PaymentGatewayInterface
@@ -284,7 +285,7 @@ class OmnipayBridge implements PaymentGatewayInterface
             }
 
             $rawStatus = $response->getStatus();
-            $normalized = \LBHurtado\PaymentGateway\Enums\DisbursementStatus::fromGateway('netbank', $rawStatus);
+            $normalized = DisbursementStatus::fromGateway('netbank', $rawStatus);
 
             Log::info('[OmnipayBridge] Status checked', [
                 'transaction_id' => $transactionId,
@@ -311,13 +312,13 @@ class OmnipayBridge implements PaymentGatewayInterface
      * Check account balance (PaymentGatewayInterface implementation).
      *
      * @param  string  $accountNumber  Account number to check
-     * @return array{balance: int, available_balance: int, currency: string, as_of: ?string, raw: array}
+     * @return array{balance: int, available_balance: int, currency: string, as_of: ?string, raw: array, failure_code?: string}
      */
     public function checkAccountBalance(string $accountNumber): array
     {
         try {
             Log::debug('[OmnipayBridge] Checking balance', [
-                'account' => $accountNumber,
+                'provider' => 'netbank',
             ]);
 
             $response = $this->gateway->checkBalance([
@@ -326,22 +327,19 @@ class OmnipayBridge implements PaymentGatewayInterface
 
             if (! $response->isSuccessful()) {
                 Log::warning('[OmnipayBridge] Balance check failed', [
-                    'account' => $accountNumber,
-                    'error' => $response->getMessage(),
+                    'failure_code' => $response->getCode()
+                        ?? ProviderLivePreflightFailureCode::InvalidBalanceResponse->value,
                 ]);
 
-                return [
-                    'balance' => 0,
-                    'available_balance' => 0,
-                    'currency' => 'PHP',
-                    'as_of' => null,
-                    'raw' => [],
-                ];
+                return $this->failedBalanceResponse(
+                    ProviderLivePreflightFailureCode::tryFrom(
+                        (string) $response->getCode(),
+                    ) ?? ProviderLivePreflightFailureCode::InvalidBalanceResponse,
+                );
             }
 
             Log::info('[OmnipayBridge] Balance checked', [
-                'account' => $accountNumber,
-                'balance' => $response->getBalance(),
+                'provider' => 'netbank',
             ]);
 
             return [
@@ -353,19 +351,29 @@ class OmnipayBridge implements PaymentGatewayInterface
             ];
 
         } catch (\Throwable $e) {
+            $failureCode = NetbankLivePreflightFailureMapper::fromThrowable($e);
             Log::error('[OmnipayBridge] Balance check error', [
-                'account' => $accountNumber,
-                'error' => $e->getMessage(),
+                'failure_code' => $failureCode->value,
             ]);
 
-            return [
-                'balance' => 0,
-                'available_balance' => 0,
-                'currency' => 'PHP',
-                'as_of' => null,
-                'raw' => [],
-            ];
+            return $this->failedBalanceResponse($failureCode);
         }
+    }
+
+    /**
+     * @return array{balance: int, available_balance: int, currency: string, as_of: null, raw: array, failure_code: string}
+     */
+    private function failedBalanceResponse(
+        ProviderLivePreflightFailureCode $failureCode,
+    ): array {
+        return [
+            'balance' => 0,
+            'available_balance' => 0,
+            'currency' => 'PHP',
+            'as_of' => null,
+            'raw' => [],
+            'failure_code' => $failureCode->value,
+        ];
     }
 
     /**

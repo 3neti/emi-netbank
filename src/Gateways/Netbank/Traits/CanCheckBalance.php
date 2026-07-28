@@ -4,6 +4,9 @@ namespace LBHurtado\PaymentGateway\Gateways\Netbank\Traits;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use LBHurtado\EmiCore\Enums\ProviderLivePreflightFailureCode;
+use LBHurtado\PaymentGateway\Support\NetbankLivePreflightFailureMapper;
+use Throwable;
 
 trait CanCheckBalance
 {
@@ -11,7 +14,7 @@ trait CanCheckBalance
      * Check account balance.
      *
      * @param  string  $accountNumber  Account number to check
-     * @return array{balance: int, available_balance: int, currency: string, as_of: ?string, raw: array}
+     * @return array{balance: int, available_balance: int, currency: string, as_of: ?string, raw: array, failure_code?: string}
      */
     public function checkAccountBalance(string $accountNumber): array
     {
@@ -26,21 +29,26 @@ trait CanCheckBalance
 
             if (! $response->successful()) {
                 Log::warning('[Netbank] Balance check failed', [
-                    'account' => $accountNumber,
                     'status' => $response->status(),
-                    'error' => $response->body(),
+                    'failure_code' => NetbankLivePreflightFailureMapper::fromHttpStatus(
+                        $response->status(),
+                    )->value,
                 ]);
 
-                return [
-                    'balance' => 0,
-                    'available_balance' => 0,
-                    'currency' => 'PHP',
-                    'as_of' => null,
-                    'raw' => [],
-                ];
+                return $this->failedBalanceResponse(
+                    NetbankLivePreflightFailureMapper::fromHttpStatus(
+                        $response->status(),
+                    ),
+                );
             }
 
             $data = $response->json();
+
+            if (! is_array($data)) {
+                return $this->failedBalanceResponse(
+                    ProviderLivePreflightFailureCode::InvalidBalanceResponse,
+                );
+            }
 
             // NetBank returns balance as {"cur": "PHP", "num": "135000"}
             $balance = isset($data['balance']['num']) ? (int) $data['balance']['num'] : 0;
@@ -49,8 +57,7 @@ trait CanCheckBalance
             $asOf = $data['created_date'] ?? null;
 
             Log::info('[Netbank] Balance checked', [
-                'account' => $accountNumber,
-                'balance' => $balance,
+                'status' => 'success',
             ]);
 
             return [
@@ -61,19 +68,31 @@ trait CanCheckBalance
                 'raw' => $data,
             ];
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $exception) {
+            $failureCode = NetbankLivePreflightFailureMapper::fromThrowable(
+                $exception,
+            );
             Log::error('[Netbank] Balance check error', [
-                'account' => $accountNumber,
-                'error' => $e->getMessage(),
+                'failure_code' => $failureCode->value,
             ]);
 
-            return [
-                'balance' => 0,
-                'available_balance' => 0,
-                'currency' => 'PHP',
-                'as_of' => null,
-                'raw' => [],
-            ];
+            return $this->failedBalanceResponse($failureCode);
         }
+    }
+
+    /**
+     * @return array{balance: int, available_balance: int, currency: string, as_of: null, raw: array, failure_code: string}
+     */
+    private function failedBalanceResponse(
+        ProviderLivePreflightFailureCode $failureCode,
+    ): array {
+        return [
+            'balance' => 0,
+            'available_balance' => 0,
+            'currency' => 'PHP',
+            'as_of' => null,
+            'raw' => [],
+            'failure_code' => $failureCode->value,
+        ];
     }
 }

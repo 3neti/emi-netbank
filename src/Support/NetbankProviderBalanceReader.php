@@ -9,7 +9,10 @@ use InvalidArgumentException;
 use LBHurtado\EmiCore\Contracts\ProviderBalanceReader;
 use LBHurtado\EmiCore\Data\Providers\ProviderBalanceObservationData;
 use LBHurtado\EmiCore\Data\Providers\ProviderBalanceRequestData;
-use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
+use LBHurtado\EmiCore\Enums\ProviderLivePreflightFailureCode;
+use LBHurtado\EmiCore\Exceptions\ProviderLivePreflightFailed;
+use LBHurtado\PaymentGateway\Exceptions\NetbankBalanceReadException;
+use LBHurtado\PaymentGateway\Funding\NetbankFundingApiClient;
 use RuntimeException;
 use Throwable;
 
@@ -18,7 +21,7 @@ final readonly class NetbankProviderBalanceReader implements ProviderBalanceRead
     private const Provider = 'netbank';
 
     public function __construct(
-        private PaymentGatewayInterface $gateway,
+        private NetbankFundingApiClient $client,
     ) {}
 
     public function providerCode(): string
@@ -41,12 +44,19 @@ final readonly class NetbankProviderBalanceReader implements ProviderBalanceRead
             throw new RuntimeException('NetBank corporate account is not configured.');
         }
 
-        $result = $this->gateway->checkAccountBalance($accountNumber);
+        try {
+            $result = $this->client->balance($accountNumber);
+        } catch (NetbankBalanceReadException $exception) {
+            throw new ProviderLivePreflightFailed($exception->failureCode);
+        }
+
         $currency = mb_strtoupper(trim((string) ($result['currency'] ?? '')));
         $raw = (array) ($result['raw'] ?? []);
 
         if ($raw === [] || $currency !== mb_strtoupper(trim($request->currency))) {
-            throw new RuntimeException('NetBank did not return a valid balance observation.');
+            throw new ProviderLivePreflightFailed(
+                ProviderLivePreflightFailureCode::InvalidBalanceResponse,
+            );
         }
 
         $amountMinor = filter_var(
@@ -55,7 +65,9 @@ final readonly class NetbankProviderBalanceReader implements ProviderBalanceRead
         );
 
         if ($amountMinor === false || $amountMinor < 0) {
-            throw new RuntimeException('NetBank returned an invalid available balance.');
+            throw new ProviderLivePreflightFailed(
+                ProviderLivePreflightFailureCode::InvalidBalanceResponse,
+            );
         }
 
         $observedAt = $this->observedAt($result['as_of'] ?? null);
@@ -84,7 +96,9 @@ final readonly class NetbankProviderBalanceReader implements ProviderBalanceRead
             try {
                 return new DateTimeImmutable($value);
             } catch (Throwable) {
-                throw new RuntimeException('NetBank returned an invalid balance timestamp.');
+                throw new ProviderLivePreflightFailed(
+                    ProviderLivePreflightFailureCode::InvalidBalanceResponse,
+                );
             }
         }
 

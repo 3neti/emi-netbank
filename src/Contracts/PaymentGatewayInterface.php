@@ -45,7 +45,7 @@ interface PaymentGatewayInterface
      * Check account balance.
      *
      * @param  string  $accountNumber  Account number to check
-     * @return array{balance: int, available_balance: int, currency: string, as_of: ?string, raw: array}
+     * @return array{balance: int, available_balance: int, currency: string, as_of: ?string, raw: array, failure_code?: string}
      */
     public function checkAccountBalance(string $accountNumber): array;
 

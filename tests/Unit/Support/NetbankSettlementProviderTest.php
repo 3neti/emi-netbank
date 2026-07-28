@@ -5,6 +5,7 @@ declare(strict_types=1);
 use LBHurtado\EmiCore\Contracts\FundingInstructionIssuer;
 use LBHurtado\EmiCore\Contracts\ProviderBalanceReader;
 use LBHurtado\EmiCore\Contracts\ProviderFundingEvidenceVerifier;
+use LBHurtado\EmiCore\Contracts\ProviderLivePreflightProbe;
 use LBHurtado\EmiCore\Contracts\SettlementProviderRegistryContract;
 use LBHurtado\EmiCore\Contracts\StandingFundingAddressProvider;
 use LBHurtado\EmiCore\Data\Providers\ProviderReadinessRequestData;
@@ -12,6 +13,7 @@ use LBHurtado\EmiCore\Enums\ProviderCapability;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
 use LBHurtado\PaymentGateway\Funding\NetbankReusableFundingAddressProvider;
 use LBHurtado\PaymentGateway\Support\NetbankProviderBalanceReader;
+use LBHurtado\PaymentGateway\Support\NetbankProviderLivePreflightProbe;
 use LBHurtado\PaymentGateway\Support\NetbankSettlementProvider;
 
 it('advertises only the provider-neutral capabilities implemented by NetBank', function () {
@@ -33,7 +35,9 @@ it('advertises only the provider-neutral capabilities implemented by NetBank', f
         ->and(app(NetbankReusableFundingAddressProvider::class))
         ->toBeInstanceOf(StandingFundingAddressProvider::class)
         ->and(app(NetbankProviderBalanceReader::class))
-        ->toBeInstanceOf(ProviderBalanceReader::class);
+        ->toBeInstanceOf(ProviderBalanceReader::class)
+        ->and(app(NetbankProviderLivePreflightProbe::class))
+        ->toBeInstanceOf(ProviderLivePreflightProbe::class);
 });
 
 it('requires the balance endpoint before provider balance reads are ready', function () {

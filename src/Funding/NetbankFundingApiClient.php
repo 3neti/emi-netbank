@@ -10,8 +10,12 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use LBHurtado\EmiCore\Data\Funding\FundingQrMerchantData;
+use LBHurtado\EmiCore\Enums\ProviderLivePreflightFailureCode;
+use LBHurtado\PaymentGateway\Exceptions\NetbankBalanceReadException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingRequestFailed;
+use LBHurtado\PaymentGateway\Support\NetbankLivePreflightFailureMapper;
+use Throwable;
 
 class NetbankFundingApiClient
 {
@@ -115,6 +119,76 @@ class NetbankFundingApiClient
                 'num' => '',
             ],
         ]);
+    }
+
+    /**
+     * @return array{balance: int, available_balance: int, currency: string, as_of: ?string, raw: array<string, mixed>}
+     */
+    public function balance(string $accountNumber): array
+    {
+        try {
+            $response = $this->api()->get(
+                rtrim($this->requiredConfig('balance_endpoint'), '/')
+                .'/'.rawurlencode($accountNumber),
+            );
+
+            if (! $response->successful()) {
+                throw new NetbankBalanceReadException(
+                    NetbankLivePreflightFailureMapper::fromHttpStatus(
+                        $response->status(),
+                    ),
+                );
+            }
+
+            $data = $response->json();
+
+            if (! is_array($data)) {
+                throw new NetbankBalanceReadException(
+                    ProviderLivePreflightFailureCode::InvalidBalanceResponse,
+                );
+            }
+
+            $balance = $this->minorAmount($data['balance']['num'] ?? null);
+            $availableBalance = $this->minorAmount(
+                $data['available_balance']['num']
+                    ?? $data['balance']['num']
+                    ?? null,
+            );
+            $currency = $data['balance']['cur'] ?? null;
+
+            if (
+                $balance === null
+                || $availableBalance === null
+                || ! is_string($currency)
+                || trim($currency) === ''
+            ) {
+                throw new NetbankBalanceReadException(
+                    ProviderLivePreflightFailureCode::InvalidBalanceResponse,
+                );
+            }
+
+            $asOf = $data['created_date'] ?? null;
+
+            return [
+                'balance' => $balance,
+                'available_balance' => $availableBalance,
+                'currency' => mb_strtoupper(trim($currency)),
+                'as_of' => is_string($asOf) ? $asOf : null,
+                'raw' => $data,
+            ];
+        } catch (NetbankBalanceReadException $exception) {
+            throw $exception;
+        } catch (NetbankFundingRequestFailed $exception) {
+            $failureCode = $exception->operation === 'oauth-token'
+                ? $this->authenticationFailureCode($exception)
+                : ProviderLivePreflightFailureCode::ProviderUnavailable;
+
+            throw new NetbankBalanceReadException($failureCode);
+        } catch (Throwable $exception) {
+            throw new NetbankBalanceReadException(
+                NetbankLivePreflightFailureMapper::fromThrowable($exception),
+            );
+        }
     }
 
     /**
@@ -260,6 +334,41 @@ class NetbankFundingApiClient
         if (! $response->successful()) {
             throw NetbankFundingRequestFailed::forOperation($operation, $response->status());
         }
+    }
+
+    private function authenticationFailureCode(
+        NetbankFundingRequestFailed $exception,
+    ): ProviderLivePreflightFailureCode {
+        if (
+            $exception->invalidResponse
+            || in_array($exception->status, [400, 401, 403], true)
+        ) {
+            return ProviderLivePreflightFailureCode::AuthenticationFailed;
+        }
+
+        return $exception->status === null
+            ? ProviderLivePreflightFailureCode::ProviderUnavailable
+            : NetbankLivePreflightFailureMapper::fromHttpStatus(
+                $exception->status,
+            );
+    }
+
+    private function minorAmount(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value >= 0 ? $value : null;
+        }
+
+        if (
+            ! is_string($value)
+            || preg_match('/\A\d+\z/', trim($value)) !== 1
+        ) {
+            return null;
+        }
+
+        $amount = filter_var(trim($value), FILTER_VALIDATE_INT);
+
+        return $amount === false ? null : $amount;
     }
 
     private function requiredConfig(string $key): string
