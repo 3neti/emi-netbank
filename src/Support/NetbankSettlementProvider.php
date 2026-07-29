@@ -83,6 +83,8 @@ final class NetbankSettlementProvider implements ProviderReadinessProbe, Settlem
 
         $keys = match ($capability) {
             ProviderCapability::BalanceRead => [
+                'api_url',
+                'token_url',
                 'client_id',
                 'client_secret',
                 'corporate_account_number',

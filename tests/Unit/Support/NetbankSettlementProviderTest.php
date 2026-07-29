@@ -59,6 +59,30 @@ it('requires the balance endpoint before provider balance reads are ready', func
         ->toBe(['missing-config:balance_endpoint']);
 });
 
+it('requires the funding API and authentication endpoints for balance reads', function () {
+    config()->set('payment-gateway.netbank.funding.api_url', null);
+    config()->set('payment-gateway.netbank.funding.token_url', null);
+    config()->set('payment-gateway.netbank.funding.client_id', 'client');
+    config()->set('payment-gateway.netbank.funding.client_secret', 'secret');
+    config()->set('payment-gateway.netbank.funding.corporate_account_number', '123456789');
+    config()->set('payment-gateway.netbank.funding.balance_endpoint', '/v1/accounts');
+
+    $readiness = app(NetbankSettlementProvider::class)->checkReadiness(
+        new ProviderReadinessRequestData(
+            provider: 'netbank',
+            connectionReference: 'primary',
+            requiredCapabilities: [ProviderCapability::BalanceRead],
+        ),
+    );
+
+    expect($readiness->readyFor([ProviderCapability::BalanceRead]))->toBeFalse()
+        ->and($readiness->issues[ProviderCapability::BalanceRead->value])
+        ->toBe([
+            'missing-config:api_url',
+            'missing-config:token_url',
+        ]);
+});
+
 it('reports readiness per requested capability without leaking configuration values', function () {
     config()->set('payment-gateway.netbank.funding.client_id', null);
     config()->set('payment-gateway.netbank.funding.client_secret', 'secret-value');
