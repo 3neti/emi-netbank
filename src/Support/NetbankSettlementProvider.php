@@ -33,6 +33,7 @@ final class NetbankSettlementProvider implements ProviderReadinessProbe, Settlem
                 ProviderCapability::FundingEvidenceRead,
                 ProviderCapability::FundingInstructionIssue,
                 ProviderCapability::StandingFundingAddress,
+                ProviderCapability::SettlementExecution,
             ],
         );
     }
@@ -114,8 +115,29 @@ final class NetbankSettlementProvider implements ProviderReadinessProbe, Settlem
                 'qr_merchant_name',
                 'qr_merchant_city',
             ],
+            ProviderCapability::SettlementExecution => [],
             default => [],
         };
+
+        if ($capability === ProviderCapability::SettlementExecution) {
+            $configuration = [
+                'disbursement_endpoint' => 'disbursement.server.end-point',
+                'token_endpoint' => 'disbursement.server.token-end-point',
+                'status_endpoint' => 'disbursement.server.status-endpoint',
+                'client_id' => 'disbursement.client.id',
+                'client_secret' => 'disbursement.client.secret',
+                'source_account_number' => 'disbursement.source.account_number',
+                'sender_customer_id' => 'omnipay.gateways.netbank.options.senderCustomerId',
+            ];
+
+            return array_values(array_map(
+                static fn (string $key): string => "missing-config:{$key}",
+                array_keys(array_filter(
+                    $configuration,
+                    static fn (string $path): bool => trim((string) config($path)) === '',
+                )),
+            ));
+        }
 
         if (
             $capability === ProviderCapability::StandingFundingAddress

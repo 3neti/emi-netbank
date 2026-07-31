@@ -27,6 +27,7 @@ it('advertises only the provider-neutral capabilities implemented by NetBank', f
             ProviderCapability::FundingEvidenceRead,
             ProviderCapability::FundingInstructionIssue,
             ProviderCapability::StandingFundingAddress,
+            ProviderCapability::SettlementExecution,
         ])
         ->and($provider)->toBe(app(NetbankSettlementProvider::class))
         ->and(app(NetbankFundingProviderAdapter::class))
@@ -38,6 +39,28 @@ it('advertises only the provider-neutral capabilities implemented by NetBank', f
         ->toBeInstanceOf(ProviderBalanceReader::class)
         ->and(app(NetbankProviderLivePreflightProbe::class))
         ->toBeInstanceOf(ProviderLivePreflightProbe::class);
+});
+
+it('requires the complete disbursement contract for settlement execution', function () {
+    config()->set('disbursement.server.end-point', 'https://api.example.test/disbursements');
+    config()->set('disbursement.server.token-end-point', 'https://auth.example.test/token');
+    config()->set('disbursement.server.status-endpoint', null);
+    config()->set('disbursement.client.id', 'client');
+    config()->set('disbursement.client.secret', 'secret');
+    config()->set('disbursement.source.account_number', '123456789');
+    config()->set('omnipay.gateways.netbank.options.senderCustomerId', 'customer');
+
+    $readiness = app(NetbankSettlementProvider::class)->checkReadiness(
+        new ProviderReadinessRequestData(
+            provider: 'netbank',
+            connectionReference: 'primary',
+            requiredCapabilities: [ProviderCapability::SettlementExecution],
+        ),
+    );
+
+    expect($readiness->readyFor([ProviderCapability::SettlementExecution]))->toBeFalse()
+        ->and($readiness->issues[ProviderCapability::SettlementExecution->value])
+        ->toBe(['missing-config:status_endpoint']);
 });
 
 it('requires the balance endpoint before provider balance reads are ready', function () {
