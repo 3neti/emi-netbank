@@ -42,7 +42,7 @@ composer audit
 
 - PHP 8.2 or newer
 - Laravel 12 or 13
-- EMI Core 1.x or 2.0 beta
+- EMI Core 2.0 beta or newer compatible 2.x release
 - Wallet 1.x or 2.0 beta
 
 ## License

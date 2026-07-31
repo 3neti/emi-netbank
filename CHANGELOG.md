@@ -8,7 +8,7 @@ All notable changes to `3neti/emi-netbank` are documented here.
 - Provider-neutral funding, VCA, reusable-address, and QR Ph capabilities
 - Sanitized live balance preflight and authoritative balance observations
 - Payout status evidence with normalized NetBank rejection reasons
-- Laravel 12/13, EMI Core 1/2, Wallet 1/2, and Pest 3/4 CI matrix
+- Laravel 12/13, EMI Core 2, Wallet 2, and Pest 3/4 CI matrix
 
 ### Changed
 - Treasury attribution now uses NetBank's ledger balance while preserving

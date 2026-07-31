@@ -23,6 +23,21 @@ beforeEach(function () {
     ]);
 });
 
+dataset('netbank connection failures', [
+    'dns' => [
+        'cURL error 6: Could not resolve host: sensitive.example',
+        ProviderLivePreflightFailureCode::DnsResolutionFailed,
+    ],
+    'timeout' => [
+        'cURL error 28: Operation timed out',
+        ProviderLivePreflightFailureCode::ConnectionTimeout,
+    ],
+    'tls' => [
+        'cURL error 60: SSL certificate problem',
+        ProviderLivePreflightFailureCode::TlsFailure,
+    ],
+]);
+
 it('reads and normalizes authoritative ledger and available balances', function () {
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response([
@@ -88,20 +103,7 @@ it('classifies DNS, timeout, and TLS connection failures', function (
     } catch (NetbankBalanceReadException $exception) {
         expect($exception->failureCode)->toBe($expected);
     }
-})->with([
-    'dns' => [
-        'cURL error 6: Could not resolve host: sensitive.example',
-        ProviderLivePreflightFailureCode::DnsResolutionFailed,
-    ],
-    'timeout' => [
-        'cURL error 28: Operation timed out',
-        ProviderLivePreflightFailureCode::ConnectionTimeout,
-    ],
-    'tls' => [
-        'cURL error 60: SSL certificate problem',
-        ProviderLivePreflightFailureCode::TlsFailure,
-    ],
-]);
+})->with('netbank connection failures');
 
 it('classifies a malformed balance body', function () {
     Http::fake([
