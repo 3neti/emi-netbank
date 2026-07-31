@@ -59,13 +59,14 @@ class NetbankPayoutProvider implements PayoutProvider
     public function checkStatus(string $transactionId): PayoutResultData
     {
         $result = $this->gateway->checkDisbursementStatus($transactionId);
+        $metadata = $this->enrichStatusMetadata($result['raw'] ?? null);
 
         return new PayoutResultData(
             transaction_id: $transactionId,
             uuid: Str::uuid()->toString(),
             status: $this->mapStatus($result['status']),
             provider: 'netbank',
-            metadata: $result['raw'] ?? null,
+            metadata: $metadata,
         );
     }
 
@@ -81,6 +82,52 @@ class NetbankPayoutProvider implements PayoutProvider
             'REJECTED' => PayoutStatus::FAILED,
             default => PayoutStatus::fromGeneric($status),
         };
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function enrichStatusMetadata(mixed $metadata): ?array
+    {
+        if (! is_array($metadata)) {
+            return null;
+        }
+
+        $rejectionReason = $this->extractRejectionReason($metadata);
+
+        if ($rejectionReason !== null) {
+            $metadata['rejection_reason'] = $rejectionReason;
+        }
+
+        return $metadata;
+    }
+
+    /**
+     * @param  array<string, mixed>  $metadata
+     */
+    private function extractRejectionReason(array $metadata): ?string
+    {
+        foreach (array_reverse((array) ($metadata['status_details'] ?? [])) as $detail) {
+            if (! is_array($detail)) {
+                continue;
+            }
+
+            $message = $detail['message'] ?? null;
+
+            if (is_string($message) && trim($message) !== '') {
+                return trim($message);
+            }
+        }
+
+        foreach (['rejection_reason', 'message', 'error'] as $key) {
+            $message = $metadata[$key] ?? null;
+
+            if (is_string($message) && trim($message) !== '') {
+                return trim($message);
+            }
+        }
+
+        return null;
     }
 
     public function getRailFee(SettlementRail $rail): int
