@@ -5,7 +5,10 @@ namespace LBHurtado\PaymentGateway;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Number;
 use Illuminate\Support\ServiceProvider;
+use LBHurtado\EmiCore\Contracts\DeploymentConnectionContributor;
+use LBHurtado\EmiCore\Contracts\DeploymentEnvironmentContributor;
 use LBHurtado\MoneyIssuer\Support\BankRegistry;
+use LBHurtado\PaymentGateway\Configuration\NetbankDeploymentContributor;
 use LBHurtado\PaymentGateway\Console\Commands\CheckBalanceCommand;
 use LBHurtado\PaymentGateway\Console\Commands\GenerateQrCommand;
 use LBHurtado\PaymentGateway\Console\Commands\TestDisbursementCommand;
@@ -24,6 +27,11 @@ class PaymentGatewayServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(BankRegistry::class, fn () => new BankRegistry);
+        $this->app->singleton(NetbankDeploymentContributor::class);
+        $this->app->tag(NetbankDeploymentContributor::class, [
+            DeploymentEnvironmentContributor::class,
+            DeploymentConnectionContributor::class,
+        ]);
 
         $this->mergeConfigFrom(
             __DIR__.'/../config/disbursement.php',
