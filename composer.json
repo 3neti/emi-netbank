@@ -28,15 +28,16 @@
         }
     },
     "require": {
-        "3neti/emi-core": "^v1.0",
+        "php": "^8.2",
+        "3neti/emi-core": "^1.0 || ^2.0@beta",
         "spatie/laravel-data": "^4.15",
         "laravel/sanctum": "^4.0",
         "lorisleiva/laravel-actions": "^2.9",
         "brick/money": "^0.10.1",
-        "3neti/merchant": "^v1.1",
-        "3neti/laravel-model-channel": "^v1.0",
-        "3neti/wallet": "^v1.0",
-        "3neti/money-issuer": "^v1.0",
+        "3neti/merchant": "^1.2",
+        "3neti/laravel-model-channel": "^1.1",
+        "3neti/wallet": "^1.0 || ^2.0@beta",
+        "3neti/money-issuer": "^1.1",
         "propaganistas/laravel-phone": "^6.0",
         "league/omnipay": "^3.2",
         "omnipay/common": "^3.1",
@@ -44,18 +45,22 @@
         "php-http/discovery": "^1.14"
     },
     "require-dev": {
-        "orchestra/testbench": "^10.3",
-        "pestphp/pest": "^3.8"
+        "laravel/pint": "^1.0",
+        "orchestra/testbench": "^10.3 || ^11.0",
+        "pestphp/pest": "^3.8 || ^4.0",
+        "pestphp/pest-plugin-laravel": "^3.2 || ^4.0"
     },
     "scripts": {
+        "pint": "vendor/bin/pint",
         "test": "vendor/bin/pest"
     },
     "config": {
         "allow-plugins": {
             "pestphp/pest-plugin": true,
             "php-http/discovery": true
-        }
+        },
+        "sort-packages": true
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true
 }
