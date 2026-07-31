@@ -60,7 +60,7 @@ final readonly class NetbankProviderBalanceReader implements ProviderBalanceRead
         }
 
         $amountMinor = filter_var(
-            $result['available_balance'] ?? null,
+            $result['balance'] ?? null,
             FILTER_VALIDATE_INT,
         );
 

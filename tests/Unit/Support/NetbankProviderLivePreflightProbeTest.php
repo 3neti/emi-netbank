@@ -21,7 +21,7 @@ it('returns an authoritative observation when NetBank is live-ready', function (
     $client = Mockery::mock(NetbankFundingApiClient::class);
     $client->shouldReceive('balance')->once()->andReturn([
         'balance' => 500_00,
-        'available_balance' => 500_00,
+        'available_balance' => 425_00,
         'currency' => 'PHP',
         'as_of' => '2026-07-29T09:30:00+08:00',
         'raw' => ['balance' => ['cur' => 'PHP']],

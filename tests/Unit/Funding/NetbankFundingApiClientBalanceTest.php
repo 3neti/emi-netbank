@@ -23,7 +23,7 @@ beforeEach(function () {
     ]);
 });
 
-it('reads and normalizes the authoritative available balance', function () {
+it('reads and normalizes authoritative ledger and available balances', function () {
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response([
             'access_token' => 'sensitive-access-token',
