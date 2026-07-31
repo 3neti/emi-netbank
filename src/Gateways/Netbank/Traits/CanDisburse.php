@@ -13,6 +13,7 @@ use Illuminate\Validation\Rule;
 use LBHurtado\PaymentGateway\Data\Disburse\DisburseInputData;
 use LBHurtado\PaymentGateway\Data\Disburse\DisburseResponseData;
 use LBHurtado\PaymentGateway\Data\Netbank\Disburse\DisbursePayloadData;
+use LBHurtado\PaymentGateway\Enums\DisbursementStatus;
 use LBHurtado\Wallet\Actions\TopupWalletAction;
 use LBHurtado\Wallet\Events\DisbursementConfirmed;
 
@@ -158,7 +159,7 @@ trait CanDisburse
 
             $data = $response->json();
             $rawStatus = $data['status'] ?? 'Pending';
-            $normalized = \LBHurtado\PaymentGateway\Enums\DisbursementStatus::fromGateway('netbank', $rawStatus);
+            $normalized = DisbursementStatus::fromGateway('netbank', $rawStatus);
 
             Log::info('[Netbank] Status checked', [
                 'transaction_id' => $transactionId,

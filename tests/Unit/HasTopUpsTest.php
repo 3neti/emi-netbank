@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Http;
+use LBHurtado\PaymentGateway\Contracts\TopUpInterface;
+use LBHurtado\PaymentGateway\Data\TopUp\TopUpResultData;
 use LBHurtado\PaymentGateway\Exceptions\TopUpException;
 use LBHurtado\PaymentGateway\Tests\Models\User;
 
@@ -19,7 +21,7 @@ test('user can initiate top-up via netbank', function () {
 
     $result = $user->initiateTopUp(500, 'netbank', 'GCASH');
 
-    expect($result)->toBeInstanceOf(\LBHurtado\PaymentGateway\Data\TopUp\TopUpResultData::class)
+    expect($result)->toBeInstanceOf(TopUpResultData::class)
         ->and($result->gateway)->toBe('netbank')
         ->and($result->amount)->toBe(500.0)
         ->and($result->redirect_url)->toContain('checkout.netbank.ph');
@@ -95,7 +97,7 @@ test('can get top-up by reference number', function () {
 
     $topUp = $user->getTopUpByReference($result->reference_no);
 
-    expect($topUp)->toBeInstanceOf(\LBHurtado\PaymentGateway\Contracts\TopUpInterface::class)
+    expect($topUp)->toBeInstanceOf(TopUpInterface::class)
         ->and($topUp->getAmount())->toBe(500.0);
 });
 

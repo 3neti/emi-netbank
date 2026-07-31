@@ -18,7 +18,7 @@ class RecipientAccountNumberData extends Data
      *
      * @param  string  $recipientAccountNumber  Full account string including alias prefix
      *
-     * @throws \InvalidArgumentException if alias not found at start
+     * @throws InvalidArgumentException if alias not found at start
      */
     public static function fromRecipientAccountNumber(string $recipientAccountNumber): self
     {

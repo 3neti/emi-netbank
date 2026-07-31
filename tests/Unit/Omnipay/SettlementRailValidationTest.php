@@ -2,6 +2,7 @@
 
 namespace LBHurtado\PaymentGateway\Tests\Unit\Omnipay;
 
+use LBHurtado\EmiCore\Contracts\BankRegistryContract;
 use LBHurtado\PaymentGateway\Omnipay\Netbank\Gateway;
 use LBHurtado\PaymentGateway\Tests\TestCase;
 use Omnipay\Common\Exception\InvalidRequestException;
@@ -179,7 +180,7 @@ class SettlementRailValidationTest extends TestCase
         $this->expectException(InvalidRequestException::class);
         $this->expectExceptionMessageMatches('/Gateway does not support PESONET/');
 
-        $bankRegistry = \Mockery::mock(\LBHurtado\EmiCore\Contracts\BankRegistryContract::class);
+        $bankRegistry = \Mockery::mock(BankRegistryContract::class);
 
         $bankRegistry->shouldReceive('supportsRail')
             ->once()
@@ -191,7 +192,7 @@ class SettlementRailValidationTest extends TestCase
                 'full_name' => 'Mock PESONET Bank',
             ]);
 
-        app()->instance(\LBHurtado\EmiCore\Contracts\BankRegistryContract::class, $bankRegistry);
+        app()->instance(BankRegistryContract::class, $bankRegistry);
 
         $request = $gateway->disburse([
             'amount' => 100000 * 100,

@@ -3,8 +3,8 @@
 namespace LBHurtado\PaymentGateway\Console\Commands;
 
 use LBHurtado\EmiCore\Enums\SettlementRail as EmiSettlementRail;
-use LBHurtado\PaymentGateway\Enums\SettlementRail;
 use LBHurtado\MoneyIssuer\Support\BankRegistry;
+use LBHurtado\PaymentGateway\Enums\SettlementRail;
 
 /**
  * Test disbursement via Omnipay gateway

@@ -2,6 +2,7 @@
 
 use Bavix\Wallet\Interfaces\Wallet;
 use Bavix\Wallet\Models\Transaction;
+use Bavix\Wallet\Models\Transfer;
 use Brick\Money\Money;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
@@ -128,7 +129,7 @@ it('sends a live QR transaction to Netbank', function () {
         // Assert that it returns a valid base64-encoded QR code string
         expect($response)->toStartWith('data:image/png;base64,');
 
-    } catch (\Throwable $e) {
+    } catch (Throwable $e) {
         // Catch and log any errors returned by Netbank or the gateway
         dump('Error:', $e->getMessage());
         throw $e; // Rethrow the exception if needed for assertion purposes
@@ -213,10 +214,10 @@ it('tests confirmDeposit function in NetbankPaymentGateway', function (User $use
     Log::spy();
 
     // Mock the Transfer instance
-    $transfer = \Mockery::mock(\Bavix\Wallet\Models\Transfer::class)->makePartial();
+    $transfer = Mockery::mock(Transfer::class)->makePartial();
 
     // Mock the Transaction (deposit) relationship and its attributes
-    $transaction = \Mockery::mock(\Bavix\Wallet\Models\Transaction::class);
+    $transaction = Mockery::mock(Transaction::class);
     $transaction->shouldReceive('getAttribute')
         ->with('payable')
         ->andReturn($user) // Set the transaction's payable relationship to the user
@@ -351,7 +352,7 @@ it('successfully disburses funds to a bank account', function (User $user, array
         $request['reference_id'] === $validated['reference']
     );
 
-    Log::shouldHaveReceived('info')->with('NetbankPaymentGateway@disburse', \Mockery::any());
+    Log::shouldHaveReceived('info')->with('NetbankPaymentGateway@disburse', Mockery::any());
 })->with('user', 'disbursement')->skip();
 
 it('confirms disbursement and deducts from user wallet', function (User $user, array $validated) {
@@ -442,7 +443,7 @@ it('sends a live disbursement transaction to Netbank', function () {
         expect($response->transaction_id)->not->toBeNull();
         //        expect($response->status)->toBeOneOf(['PENDING', 'SUCCESS']);
 
-    } catch (\Throwable $e) {
+    } catch (Throwable $e) {
         // Catch and log any potential errors returned by Netbank or the gateway
         dump('Error:', $e->getMessage());
         throw $e; // Rethrow the exception for assertion purposes

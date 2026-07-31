@@ -18,6 +18,7 @@ class OmnipayFactoryTest extends TestCase
         config()->set('omnipay.gateways.netbank.options.clientSecret', 'test-client-secret');
         config()->set('omnipay.gateways.netbank.options.tokenEndpoint', 'https://fake-api.test/token');
     }
+
     public function test_creates_gateway_from_config()
     {
         $gateway = OmnipayFactory::create('netbank');

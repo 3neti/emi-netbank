@@ -18,8 +18,8 @@ it('can generate a QR code', function () {
     $this->gatewayMock
         ->shouldReceive('generate')
         ->withArgs(fn ($acct, $amt) => $acct === $account &&
-            $amt instanceof \Brick\Money\Money &&
-            $amt->isEqualTo(\Brick\Money\Money::of($amount, 'PHP'))
+            $amt instanceof Money &&
+            $amt->isEqualTo(Money::of($amount, 'PHP'))
         )
         ->andReturn('some_image_bytes');
 

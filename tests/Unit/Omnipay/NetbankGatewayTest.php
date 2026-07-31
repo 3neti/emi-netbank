@@ -4,6 +4,7 @@ namespace LBHurtado\PaymentGateway\Tests\Unit\Omnipay;
 
 use LBHurtado\PaymentGateway\Enums\SettlementRail;
 use LBHurtado\PaymentGateway\Omnipay\Netbank\Gateway;
+use LBHurtado\PaymentGateway\Omnipay\Netbank\Message\DisburseRequest;
 use PHPUnit\Framework\TestCase;
 
 class NetbankGatewayTest extends TestCase
@@ -91,7 +92,7 @@ class NetbankGatewayTest extends TestCase
         ]);
 
         $this->assertInstanceOf(
-            \LBHurtado\PaymentGateway\Omnipay\Netbank\Message\DisburseRequest::class,
+            DisburseRequest::class,
             $request
         );
     }

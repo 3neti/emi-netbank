@@ -2,10 +2,10 @@
 
 namespace LBHurtado\PaymentGateway\Omnipay\Netbank\Traits;
 
+use LBHurtado\EmiCore\Contracts\BankRegistryContract;
 use LBHurtado\EmiCore\Enums\SettlementRail as EmiSettlementRail;
 use LBHurtado\PaymentGateway\Enums\SettlementRail;
 use Omnipay\Common\Exception\InvalidRequestException;
-use LBHurtado\EmiCore\Contracts\BankRegistryContract;
 
 /**
  * ValidatesSettlementRail Trait

@@ -5,7 +5,7 @@ it('can read the disbursement config file', function () {
     expect(config('disbursement.server.end-point'))->toBe(env('NETBANK_DISBURSEMENT_ENDPOINT'));
     expect(config('disbursement.server.token-end-point'))->toBe(env('NETBANK_TOKEN_ENDPOINT'));
     expect(config('disbursement.server.qr-end-point'))->toBe(env('NETBANK_QR_ENDPOINT'));
-//    expect(config('disbursement.server.status-end-point'))->toBe(env('NETBANK_STATUS_ENDPOINT'));
+    //    expect(config('disbursement.server.status-end-point'))->toBe(env('NETBANK_STATUS_ENDPOINT'));
 
     // Client Configuration
     expect(config('disbursement.client.id'))->toBe(env('NETBANK_CLIENT_ID', ''));

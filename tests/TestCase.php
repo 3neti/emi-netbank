@@ -2,13 +2,24 @@
 
 namespace LBHurtado\PaymentGateway\Tests;
 
+use Dotenv\Dotenv;
 use FrittenKeeZ\Vouchers\VouchersServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Laravel\Sanctum\SanctumServiceProvider;
+use LBHurtado\EmiCore\EmiCoreServiceProvider;
 use LBHurtado\Merchant\Models\Merchant;
+use LBHurtado\ModelChannel\ModelChannelServiceProvider;
 use LBHurtado\MoneyIssuer\MoneyIssuerServiceProvider;
+use LBHurtado\PaymentGateway\PaymentGatewayServiceProvider;
 use LBHurtado\PaymentGateway\Tests\Models\User;
+use LBHurtado\Wallet\WalletServiceProvider;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 use Propaganistas\LaravelPhone\PhoneServiceProvider;
+use Spatie\LaravelData\Normalizers\ArrayableNormalizer;
+use Spatie\LaravelData\Normalizers\ArrayNormalizer;
+use Spatie\LaravelData\Normalizers\JsonNormalizer;
+use Spatie\LaravelData\Normalizers\ModelNormalizer;
+use Spatie\LaravelData\Normalizers\ObjectNormalizer;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -22,7 +33,7 @@ abstract class TestCase extends BaseTestCase
         // Set the base path for the package
         if (! defined('TESTING_PACKAGE_PATH')) {
             define('TESTING_PACKAGE_PATH', __DIR__.'/../vendor/3neti/money-issuer/resources/documents');
-//            define('TESTING_PACKAGE_PATH', __DIR__.'/../resources/documents');
+            //            define('TESTING_PACKAGE_PATH', __DIR__.'/../resources/documents');
         }
         $this->loadEnvironment();
 
@@ -33,16 +44,16 @@ abstract class TestCase extends BaseTestCase
     protected function getPackageProviders($app)
     {
         return [
-            \LBHurtado\EmiCore\EmiCoreServiceProvider::class,
-            \LBHurtado\PaymentGateway\PaymentGatewayServiceProvider::class,
-            \LBHurtado\Wallet\WalletServiceProvider::class,
-            \LBHurtado\ModelChannel\ModelChannelServiceProvider::class,
+            EmiCoreServiceProvider::class,
+            PaymentGatewayServiceProvider::class,
+            WalletServiceProvider::class,
+            ModelChannelServiceProvider::class,
             \Bavix\Wallet\WalletServiceProvider::class,
-            \Laravel\Sanctum\SanctumServiceProvider::class,
-//            \LBHurtado\Voucher\VoucherServiceProvider::class,
-//            VouchersServiceProvider::class,
+            SanctumServiceProvider::class,
+            //            \LBHurtado\Voucher\VoucherServiceProvider::class,
+            //            VouchersServiceProvider::class,
             PhoneServiceProvider::class,
-            MoneyIssuerServiceProvider::class
+            MoneyIssuerServiceProvider::class,
         ];
     }
 
@@ -54,12 +65,12 @@ abstract class TestCase extends BaseTestCase
         config()->set('data.max_transformation_depth', 6);
         config()->set('data.throw_when_max_transformation_depth_reached', 6);
         config()->set('data.normalizers', [
-            \Spatie\LaravelData\Normalizers\ModelNormalizer::class,
+            ModelNormalizer::class,
             // Spatie\LaravelData\Normalizers\FormRequestNormalizer::class,
-            \Spatie\LaravelData\Normalizers\ArrayableNormalizer::class,
-            \Spatie\LaravelData\Normalizers\ObjectNormalizer::class,
-            \Spatie\LaravelData\Normalizers\ArrayNormalizer::class,
-            \Spatie\LaravelData\Normalizers\JsonNormalizer::class,
+            ArrayableNormalizer::class,
+            ObjectNormalizer::class,
+            ArrayNormalizer::class,
+            JsonNormalizer::class,
         ]);
 
         // Optional: Set web guard as the default
@@ -74,8 +85,8 @@ abstract class TestCase extends BaseTestCase
         $userMigration->up();
         $userMigration = include __DIR__.'/../vendor/3neti/merchant/database/migrations/2024_03_17_000000_create_merchant_user_table.php';
         $userMigration->up();
-//        $voucherMigration = include __DIR__.'/../vendor/frittenkeez/laravel-vouchers/publishes/migrations/2018_06_12_000000_create_voucher_tables.php';
-//        $voucherMigration->up();
+        //        $voucherMigration = include __DIR__.'/../vendor/frittenkeez/laravel-vouchers/publishes/migrations/2018_06_12_000000_create_voucher_tables.php';
+        //        $voucherMigration->up();
         $cashMigration = include __DIR__.'/../database/migrations/test/2024_08_02_202500_create_cash_table.php';
         $cashMigration->up();
         $topUpMigration = include __DIR__.'/../database/migrations/test/2025_11_16_000000_create_top_ups_table.php';
@@ -152,7 +163,7 @@ abstract class TestCase extends BaseTestCase
         $path = __DIR__.'/../.env';
 
         if (file_exists($path)) {
-            \Dotenv\Dotenv::createImmutable(dirname($path), '.env')->load();
+            Dotenv::createImmutable(dirname($path), '.env')->load();
         }
     }
 }

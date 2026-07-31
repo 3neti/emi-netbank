@@ -3,6 +3,7 @@
 namespace LBHurtado\PaymentGateway\Omnipay\Netbank\Message;
 
 use LBHurtado\PaymentGateway\Omnipay\Netbank\Traits\HasOAuth2;
+use Omnipay\Common\Exception\InvalidRequestException;
 use Omnipay\Common\Message\AbstractRequest;
 
 /**
@@ -65,7 +66,7 @@ class CheckDisbursementStatusRequest extends AbstractRequest
     /**
      * Validate the request
      *
-     * @throws \Omnipay\Common\Exception\InvalidRequestException
+     * @throws InvalidRequestException
      */
     public function getData()
     {

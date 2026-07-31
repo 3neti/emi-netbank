@@ -1,5 +1,6 @@
 <?php
 
+use LBHurtado\PaymentGateway\Database\Factories\UserFactory;
 use LBHurtado\PaymentGateway\Tests\Models\User;
 
 it('has fillable properties', function () {
@@ -39,5 +40,5 @@ it('can create a user', function () {
 it('can return a factory instance', function () {
     $factory = User::newFactory();
 
-    expect($factory)->toBeInstanceOf(\LBHurtado\PaymentGateway\Database\Factories\UserFactory::class);
+    expect($factory)->toBeInstanceOf(UserFactory::class);
 });

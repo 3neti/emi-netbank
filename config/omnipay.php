@@ -1,5 +1,8 @@
 <?php
 
+use LBHurtado\PaymentGateway\Omnipay\Netbank\Gateway;
+use LBHurtado\PaymentGateway\Support\Address;
+
 return [
     // HTTP client configuration
     'http' => [
@@ -9,7 +12,7 @@ return [
 
     'gateways' => [
         'netbank' => [
-            'class' => \LBHurtado\PaymentGateway\Omnipay\Netbank\Gateway::class,
+            'class' => Gateway::class,
             'options' => [
                 'clientId' => env('NETBANK_CLIENT_ID'),
                 'clientSecret' => env('NETBANK_CLIENT_SECRET'),
@@ -46,7 +49,7 @@ return [
             ],
         ],
         'icash' => [
-            'class' => \LBHurtado\PaymentGateway\Omnipay\ICash\Gateway::class,
+            'class' => LBHurtado\PaymentGateway\Omnipay\ICash\Gateway::class,
             'options' => [
                 'apiKey' => env('ICASH_API_KEY'),
                 'apiSecret' => env('ICASH_API_SECRET'),
@@ -72,7 +75,7 @@ return [
     // KYC workaround settings
     'kyc' => [
         'randomize_address' => env('GATEWAY_RANDOMIZE_ADDRESS', true),
-        'address_provider' => \LBHurtado\PaymentGateway\Support\Address::class,
+        'address_provider' => Address::class,
     ],
 
     // Bank registry

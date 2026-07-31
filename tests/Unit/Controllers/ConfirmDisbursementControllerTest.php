@@ -54,6 +54,6 @@ it('validates the presence of operationId', function () {
     $response = $this->postJson(route('confirm-disbursement'), []);
 
     // Assert: Status and validation error
-    $response->assertStatus(\Illuminate\Http\Response::HTTP_UNPROCESSABLE_ENTITY);
+    $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
     $response->assertSeeText('Disbursement confirmation failed.');
 });
