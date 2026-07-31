@@ -22,6 +22,7 @@ final class NetbankDeploymentContributor implements DeploymentConnectionContribu
         return [
             $this->variable('NETBANK_DISBURSEMENT_ENDPOINT', 'NetBank disbursement endpoint.', 'disbursement.server.end-point'),
             $this->variable('NETBANK_TOKEN_ENDPOINT', 'NetBank OAuth token endpoint.', 'disbursement.server.token-end-point'),
+            $this->variable('NETBANK_QR_ENDPOINT', 'NetBank QR Ph generation endpoint.', 'disbursement.server.qr-end-point'),
             $this->variable('NETBANK_STATUS_ENDPOINT', 'NetBank transaction status endpoint.', 'disbursement.server.status-endpoint'),
             $this->variable('NETBANK_BALANCE_ENDPOINT', 'NetBank balance endpoint.', 'disbursement.server.balance-endpoint'),
             $this->variable('NETBANK_CLIENT_ID', 'NetBank OAuth client identifier.', 'disbursement.client.id', secret: true),
@@ -29,6 +30,7 @@ final class NetbankDeploymentContributor implements DeploymentConnectionContribu
             $this->variable('NETBANK_CLIENT_ALIAS', 'NetBank five-digit VCA alias.', 'disbursement.client.alias', secret: true),
             $this->variable('NETBANK_SOURCE_ACCOUNT_NUMBER', 'NetBank source and corporate settlement account.', 'disbursement.source.account_number', secret: true),
             $this->variable('NETBANK_SENDER_CUSTOMER_ID', 'NetBank sender customer identifier.', 'omnipay.gateways.netbank.options.senderCustomerId', secret: true),
+            $this->variable('NETBANK_TEST_MODE', 'Use NetBank test-mode request behavior outside production.', 'omnipay.gateways.netbank.options.testMode', 'false', required: false),
             $this->variable('NETBANK_FUNDING_API_URL', 'Optional NetBank funding API base URL override.', 'payment-gateway.netbank.funding.api_url', 'https://api.netbank.ph', required: false),
             $this->variable('NETBANK_FUNDING_TOKEN_URL', 'Optional NetBank funding OAuth token URL override.', 'payment-gateway.netbank.funding.token_url', 'https://auth.netbank.ph/oauth2/token', required: false),
             $this->variable('NETBANK_FUNDING_CLIENT_ID', 'Optional NetBank funding OAuth client identifier override.', 'payment-gateway.netbank.funding.client_id', required: false),
