@@ -31,6 +31,7 @@ final class NetbankDeploymentContributor implements DeploymentConnectionContribu
             $this->variable('NETBANK_SOURCE_ACCOUNT_NUMBER', 'NetBank source and corporate settlement account.', 'disbursement.source.account_number', secret: true),
             $this->variable('NETBANK_SENDER_CUSTOMER_ID', 'NetBank sender customer identifier.', 'omnipay.gateways.netbank.options.senderCustomerId', secret: true),
             $this->variable('NETBANK_TEST_MODE', 'Use NetBank test-mode request behavior outside production.', 'omnipay.gateways.netbank.options.testMode', 'false', required: false),
+            $this->variable('USE_OMNIPAY', 'Use the provider-only NetBank disbursement gateway. Disable only for a controlled legacy rollback.', 'omnipay.use_omnipay', 'true', required: false),
             $this->variable('NETBANK_FUNDING_API_URL', 'Optional NetBank funding API base URL override.', 'payment-gateway.netbank.funding.api_url', 'https://api.netbank.ph', required: false),
             $this->variable('NETBANK_FUNDING_TOKEN_URL', 'Optional NetBank funding OAuth token URL override.', 'payment-gateway.netbank.funding.token_url', 'https://auth.netbank.ph/oauth2/token', required: false),
             $this->variable('NETBANK_FUNDING_CLIENT_ID', 'Optional NetBank funding OAuth client identifier override.', 'payment-gateway.netbank.funding.client_id', required: false),

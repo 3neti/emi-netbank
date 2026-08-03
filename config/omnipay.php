@@ -69,8 +69,10 @@ return [
 
     'default' => env('PAYMENT_GATEWAY', 'netbank'),
 
-    // Feature flag for gradual rollout
-    'use_omnipay' => env('USE_OMNIPAY', false),
+    // Provider-only disbursement is the safe default. The legacy gateway may be
+    // selected explicitly during a controlled rollback, but it performs wallet
+    // compatibility mutations that do not belong in Treasury-backed runtimes.
+    'use_omnipay' => env('USE_OMNIPAY', true),
 
     // KYC workaround settings
     'kyc' => [

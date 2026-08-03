@@ -68,13 +68,7 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         );
 
         $this->app->bind(PaymentGatewayInterface::class, function ($app) {
-            // Check if we should use Omnipay implementation
-            $useOmnipay = filter_var(
-                env('USE_OMNIPAY', false),
-                FILTER_VALIDATE_BOOLEAN
-            );
-
-            if ($useOmnipay) {
+            if ((bool) config('omnipay.use_omnipay', true)) {
                 return $app->make(
                     OmnipayPaymentGateway::class
                 );
