@@ -45,6 +45,12 @@ class NetbankPayoutProvider implements PayoutProvider
                 uuid: Str::uuid()->toString(),
                 status: PayoutStatus::FAILED,
                 provider: 'netbank',
+                metadata: [
+                    'provider_submission_accepted' => false,
+                    'failure_phase' => 'provider_submission',
+                    'failure_code' => 'submission_not_accepted',
+                    'failure_message' => 'NetBank did not accept the payout submission.',
+                ],
             );
         }
 
