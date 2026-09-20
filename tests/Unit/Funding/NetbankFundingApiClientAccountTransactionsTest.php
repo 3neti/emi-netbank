@@ -44,14 +44,14 @@ it('streams bounded corporate account history using OAuth and offset pagination'
         parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
 
         return match ((int) ($query['offset'] ?? -1)) {
-            0 => Http::response(['transactions' => [
+            0 => Http::response(['result' => [
                 netbankAccountTransaction('transaction-1', 'Credit'),
                 netbankAccountTransaction('transaction-2', 'Debit'),
             ]]),
-            2 => Http::response(['transactions' => [
+            2 => Http::response(['result' => [
                 netbankAccountTransaction('transaction-3', 'Debit'),
             ]]),
-            default => Http::response(['transactions' => []]),
+            default => Http::response(['result' => []]),
         };
     });
 

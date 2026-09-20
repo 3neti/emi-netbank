@@ -355,7 +355,11 @@ class NetbankFundingApiClient
             ]);
 
             $this->assertSuccessful($response, 'retrieve-account-transactions');
-            $transactions = $response->json('transactions');
+            $transactions = $response->json('result');
+
+            if (! is_array($transactions)) {
+                $transactions = $response->json('transactions');
+            }
 
             if (! is_array($transactions) || count($transactions) > $requestedLimit) {
                 throw NetbankFundingRequestFailed::invalidResponse('retrieve-account-transactions');
