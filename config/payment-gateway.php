@@ -33,6 +33,16 @@ return [
                 'NETBANK_FUNDING_BALANCE_ENDPOINT',
                 env('NETBANK_BALANCE_ENDPOINT'),
             ),
+            'account_transactions_endpoint' => env(
+                'NETBANK_FUNDING_ACCOUNT_TRANSACTIONS_ENDPOINT',
+                '/v1/accounts/{account_number}/transactions',
+            ),
+            'account_history' => [
+                'page_limit' => (int) env('NETBANK_FUNDING_ACCOUNT_HISTORY_PAGE_LIMIT', 100),
+                'maximum_pages' => (int) env('NETBANK_FUNDING_ACCOUNT_HISTORY_MAXIMUM_PAGES', 100),
+                'maximum_rows' => (int) env('NETBANK_FUNDING_ACCOUNT_HISTORY_MAXIMUM_ROWS', 10_000),
+                'maximum_range_days' => (int) env('NETBANK_FUNDING_ACCOUNT_HISTORY_MAXIMUM_RANGE_DAYS', 3660),
+            ],
             'vca_alias' => env('NETBANK_FUNDING_VCA_ALIAS', env('NETBANK_CLIENT_ALIAS')),
             'reference_key' => env('NETBANK_FUNDING_REFERENCE_KEY', env('APP_KEY')),
             'standing_address' => [

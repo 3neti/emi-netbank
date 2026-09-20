@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LBHurtado\PaymentGateway\Funding;
 
 use DateTimeImmutable;
+use Generator;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\PendingRequest;
@@ -283,6 +284,121 @@ class NetbankFundingApiClient
         }
 
         return array_values(array_filter($transactions, 'is_array'));
+    }
+
+    /**
+     * Stream a bounded corporate-account transaction history without persisting provider data.
+     *
+     * @return Generator<int, array<string, mixed>>
+     */
+    public function accountTransactions(
+        string $accountNumber,
+        DateTimeImmutable $startDate,
+        DateTimeImmutable $endDate,
+        ?int $maximumRows = null,
+    ): Generator {
+        $accountNumber = trim($accountNumber);
+
+        if ($accountNumber === '' || mb_strlen($accountNumber) > 191) {
+            throw new \InvalidArgumentException('A valid NetBank account number is required.');
+        }
+
+        if ($endDate <= $startDate) {
+            throw new \InvalidArgumentException('The NetBank transaction-history end date must be after the start date.');
+        }
+
+        $maximumRangeDays = max(
+            1,
+            (int) config('payment-gateway.netbank.funding.account_history.maximum_range_days', 3660),
+        );
+
+        if ($startDate->diff($endDate)->days > $maximumRangeDays) {
+            throw new \InvalidArgumentException('The NetBank transaction-history date range exceeds the configured limit.');
+        }
+
+        $configuredMaximumRows = max(
+            1,
+            (int) config('payment-gateway.netbank.funding.account_history.maximum_rows', 10_000),
+        );
+        $maximumRows ??= $configuredMaximumRows;
+
+        if ($maximumRows < 1 || $maximumRows > $configuredMaximumRows) {
+            throw new \InvalidArgumentException('The NetBank transaction-history row limit is invalid.');
+        }
+
+        $pageLimit = min(
+            100,
+            max(1, (int) config('payment-gateway.netbank.funding.account_history.page_limit', 100)),
+        );
+        $maximumPages = max(
+            1,
+            (int) config('payment-gateway.netbank.funding.account_history.maximum_pages', 100),
+        );
+        $endpoint = str_replace(
+            '{account_number}',
+            rawurlencode($accountNumber),
+            $this->requiredConfig('account_transactions_endpoint'),
+        );
+        $offset = 0;
+        $emitted = 0;
+        $page = 0;
+        $previousPageHash = null;
+        $seenTransactionIds = [];
+
+        while ($emitted < $maximumRows && $page < $maximumPages) {
+            $requestedLimit = min($pageLimit, $maximumRows - $emitted);
+            $response = $this->api()->get($endpoint, [
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
+                'limit' => $requestedLimit,
+                'offset' => $offset,
+            ]);
+
+            $this->assertSuccessful($response, 'retrieve-account-transactions');
+            $transactions = $response->json('transactions');
+
+            if (! is_array($transactions) || count($transactions) > $requestedLimit) {
+                throw NetbankFundingRequestFailed::invalidResponse('retrieve-account-transactions');
+            }
+
+            $transactions = array_values($transactions);
+            $pageHash = hash('sha256', serialize($transactions));
+
+            if ($transactions !== [] && hash_equals((string) $previousPageHash, $pageHash)) {
+                throw NetbankFundingRequestFailed::invalidResponse('retrieve-account-transactions');
+            }
+
+            $previousPageHash = $pageHash;
+            $page++;
+
+            foreach ($transactions as $transaction) {
+                if (! is_array($transaction)) {
+                    throw NetbankFundingRequestFailed::invalidResponse('retrieve-account-transactions');
+                }
+
+                $transactionId = $transaction['transaction_id'] ?? null;
+
+                if (
+                    ! is_string($transactionId)
+                    || trim($transactionId) === ''
+                    || mb_strlen($transactionId) > 191
+                    || isset($seenTransactionIds[$transactionId])
+                ) {
+                    throw NetbankFundingRequestFailed::invalidResponse('retrieve-account-transactions');
+                }
+
+                $seenTransactionIds[$transactionId] = true;
+
+                yield $transaction;
+                $emitted++;
+            }
+
+            if (count($transactions) < $requestedLimit) {
+                break;
+            }
+
+            $offset += $requestedLimit;
+        }
     }
 
     private function api(): PendingRequest
