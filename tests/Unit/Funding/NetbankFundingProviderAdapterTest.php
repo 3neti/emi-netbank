@@ -556,6 +556,43 @@ it('continues through NetBank VCA history pages instead of dropping later paymen
         ->and($payments[100]->transactionId)->toBe('credit-101');
 });
 
+it('accepts a NetBank VCA history with no transactions field only when its identifiers match', function (): void {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'vca_number' => '915001234567890123456',
+            'account_number' => '113001000019',
+        ]),
+    ]);
+
+    expect(app(NetbankFundingProviderAdapter::class)->incomingPayments(verification()))->toBe([]);
+});
+
+it('rejects missing NetBank VCA histories unless the empty response identifies the requested address', function (array $response): void {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response($response),
+    ]);
+
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->incomingPayments(verification()))
+        ->toThrow(NetbankFundingRequestFailed::class);
+})->with([
+    'unidentified empty response' => [[]],
+    'different VCA' => [[
+        'vca_number' => '915009999999999999999',
+        'account_number' => '113001000019',
+    ]],
+    'different corporate account' => [[
+        'vca_number' => '915001234567890123456',
+        'account_number' => '113001000020',
+    ]],
+    'explicitly null transactions' => [[
+        'vca_number' => '915001234567890123456',
+        'account_number' => '113001000019',
+        'transactions' => null,
+    ]],
+]);
+
 it('fails closed when a full NetBank page contains a malformed transaction', function (): void {
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),

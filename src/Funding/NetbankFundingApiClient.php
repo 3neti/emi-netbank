@@ -285,7 +285,18 @@ class NetbankFundingApiClient
         ]);
 
         $this->assertSuccessful($response, 'retrieve-vca-transactions');
-        $transactions = $response->json('transactions');
+        $payload = $response->json();
+
+        if (
+            is_array($payload)
+            && ! array_key_exists('transactions', $payload)
+            && data_get($payload, 'vca_number') === $vcaNumber
+            && data_get($payload, 'account_number') === ($accountNumber ?? $this->requiredConfig('corporate_account_number'))
+        ) {
+            return [];
+        }
+
+        $transactions = data_get($payload, 'transactions');
 
         if (! is_array($transactions)) {
             throw NetbankFundingRequestFailed::invalidResponse('retrieve-vca-transactions');
