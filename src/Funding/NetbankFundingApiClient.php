@@ -268,12 +268,20 @@ class NetbankFundingApiClient
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function transactions(string $vcaNumber, ?string $accountNumber = null): array
-    {
+    public function transactions(
+        string $vcaNumber,
+        ?string $accountNumber = null,
+        int $limit = 100,
+        int $offset = 0,
+    ): array {
+        if ($limit < 1 || $limit > 100 || $offset < 0) {
+            throw new \InvalidArgumentException('Invalid NetBank VCA transaction page.');
+        }
+
         $response = $this->api()->get('/v1/vca/'.rawurlencode($vcaNumber).'/transactions', [
             'account_number' => $accountNumber ?? $this->requiredConfig('corporate_account_number'),
-            'limit' => 100,
-            'offset' => 0,
+            'limit' => $limit,
+            'offset' => $offset,
         ]);
 
         $this->assertSuccessful($response, 'retrieve-vca-transactions');
@@ -284,6 +292,48 @@ class NetbankFundingApiClient
         }
 
         return array_values(array_filter($transactions, 'is_array'));
+    }
+
+    /**
+     * A repeated page or an exhausted safety bound is an error, never an
+     * apparently complete transaction history.
+     *
+     * @return Generator<int, array<string, mixed>>
+     */
+    public function allTransactions(string $vcaNumber, ?string $accountNumber = null): Generator
+    {
+        $limit = 100;
+        $maxPages = 10;
+        $previousPageHash = null;
+
+        for ($page = 0; $page <= $maxPages; $page++) {
+            $transactions = $this->transactions($vcaNumber, $accountNumber, $limit, $page * $limit);
+
+            if ($page === $maxPages) {
+                if ($transactions === []) {
+                    return;
+                }
+
+                throw NetbankFundingRequestFailed::invalidResponse('retrieve-vca-transactions');
+            }
+            $pageHash = hash('sha256', serialize($transactions));
+
+            if ($transactions !== [] && $pageHash === $previousPageHash) {
+                throw NetbankFundingRequestFailed::invalidResponse('retrieve-vca-transactions');
+            }
+
+            $previousPageHash = $pageHash;
+
+            foreach ($transactions as $transaction) {
+                yield $transaction;
+            }
+
+            if (count($transactions) < $limit) {
+                return;
+            }
+        }
+
+        throw NetbankFundingRequestFailed::invalidResponse('retrieve-vca-transactions');
     }
 
     /**

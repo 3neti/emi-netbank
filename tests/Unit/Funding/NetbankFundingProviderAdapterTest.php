@@ -496,6 +496,93 @@ it('verifies a settled incoming credit from authoritative VCA history', function
         && $request->data()['limit'] === 100);
 });
 
+it('reports every incoming payment with provider-reported payer fields without guessing a mobile', function () {
+    $first = netbankTransaction(transactionId: 'credit-1');
+    $first['sender_name'] = 'Apple Hurtado';
+    $first['source_account'] = [
+        'account_number' => '09175180722',
+        'bank_code' => 'GXCHPHM2XXX',
+    ];
+    unset($first['sender']);
+
+    $second = netbankTransaction(amountMinor: 5_000, transactionId: 'credit-2');
+    $second['sender_name'] = 'Bank Payer';
+    $second['source_account'] = [
+        'account_number' => '000661592316',
+        'bank_code' => 'BNORPHMMXXX',
+    ];
+    $second['source_offline_user'] = ['mobile_no' => '91712345678'];
+    unset($second['sender']);
+
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [$first, $second],
+        ]),
+    ]);
+
+    $payments = app(NetbankFundingProviderAdapter::class)->incomingPayments(verification());
+
+    expect($payments)->toHaveCount(2)
+        ->and($payments[0]->transactionId)->toBe('credit-1')
+        ->and($payments[0]->payerName)->toBe('Apple Hurtado')
+        ->and($payments[0]->payerAccountNumber)->toBe('09175180722')
+        ->and($payments[0]->payerInstitutionCode)->toBe('GXCHPHM2XXX')
+        ->and($payments[0]->payerMobile)->toBeNull()
+        ->and($payments[1]->transactionId)->toBe('credit-2')
+        ->and($payments[1]->payerMobile)->toBe('91712345678');
+});
+
+it('continues through NetBank VCA history pages instead of dropping later payments', function () {
+    Http::fake(function (Request $request) {
+        if ($request->url() === 'https://auth.netbank.test/oauth2/token') {
+            return Http::response(['access_token' => 'access-token']);
+        }
+
+        $offset = (int) ($request->data()['offset'] ?? 0);
+
+        return Http::response(['transactions' => $offset === 0
+            ? array_map(
+                fn (int $number): array => netbankTransaction(transactionId: 'credit-'.$number),
+                range(1, 100),
+            )
+            : [netbankTransaction(transactionId: 'credit-101')],
+        ]);
+    });
+
+    $payments = app(NetbankFundingProviderAdapter::class)->incomingPayments(verification());
+
+    expect($payments)->toHaveCount(101)
+        ->and($payments[100]->transactionId)->toBe('credit-101');
+});
+
+it('accepts an exact bounded history but refuses a truncated one', function (bool $hasOverflow): void {
+    Http::fake(function (Request $request) use ($hasOverflow) {
+        if ($request->url() === 'https://auth.netbank.test/oauth2/token') {
+            return Http::response(['access_token' => 'access-token']);
+        }
+
+        $offset = (int) ($request->data()['offset'] ?? 0);
+
+        return Http::response(['transactions' => $offset < 1000
+            ? array_map(
+                fn (int $number): array => netbankTransaction(transactionId: 'credit-'.$number),
+                range($offset + 1, $offset + 100),
+            )
+            : ($hasOverflow ? [netbankTransaction(transactionId: 'credit-1001')] : []),
+        ]);
+    });
+
+    if ($hasOverflow) {
+        expect(fn () => app(NetbankFundingProviderAdapter::class)->incomingPayments(verification()))
+            ->toThrow(NetbankFundingRequestFailed::class);
+
+        return;
+    }
+
+    expect(app(NetbankFundingProviderAdapter::class)->incomingPayments(verification()))->toHaveCount(1000);
+})->with([false, true]);
+
 it('treats a reported fee that mirrors the full incoming credit as zero', function () {
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),

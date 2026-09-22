@@ -234,6 +234,52 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
         );
     }
 
+    /**
+     * Return every incoming credit visible for a funding address. This is an
+     * observation-only API: callers must not infer that any credit was applied.
+     *
+     * @return list<NetbankIncomingPaymentData>
+     */
+    public function incomingPayments(FundingVerificationData $verification): array
+    {
+        $this->assertProvider($verification->provider);
+        $routing = $this->routingProfile($verification->destination);
+        $vcaNumber = trim((string) $verification->fundingAddress);
+
+        if ($vcaNumber === '' || preg_match('/\A\d{12,}\z/', $vcaNumber) !== 1) {
+            throw new InvalidArgumentException('A valid NetBank VCA number is required for monitoring.');
+        }
+
+        $payments = [];
+
+        foreach ($this->client->allTransactions($vcaNumber, $routing['account_number']) as $transaction) {
+            if (! $this->isIncomingCredit($transaction, $vcaNumber)
+                || ! $this->isInsideVerificationWindow($transaction, $verification)) {
+                continue;
+            }
+
+            $payments[] = new NetbankIncomingPaymentData(
+                transactionId: $this->requiredTransactionValue($transaction, 'transaction_id'),
+                amountMinor: $this->amountMinor($transaction),
+                currency: $this->transactionCurrency($transaction),
+                status: strtolower($this->requiredTransactionValue($transaction, 'status')),
+                occurredAt: $this->optionalDate(data_get($transaction, 'date')),
+                settledAt: $this->settledAt($transaction),
+                referenceId: $this->optionalString(data_get($transaction, 'reference_id')),
+                settlementRail: $this->optionalString(data_get($transaction, 'settlement_rail')),
+                payerName: $this->optionalString(data_get($transaction, 'sender_name'))
+                    ?? $this->optionalString(data_get($transaction, 'sender.name')),
+                payerAccountNumber: $this->optionalString(data_get($transaction, 'source_account.account_number'))
+                    ?? $this->optionalString(data_get($transaction, 'sender.account_number')),
+                payerInstitutionCode: $this->optionalString(data_get($transaction, 'source_account.bank_code'))
+                    ?? $this->optionalString(data_get($transaction, 'sender.institutionCode')),
+                payerMobile: $this->optionalString(data_get($transaction, 'source_offline_user.mobile_no')),
+            );
+        }
+
+        return $payments;
+    }
+
     private function numericReference(string $fundingReference): string
     {
         $reference = trim($fundingReference);
