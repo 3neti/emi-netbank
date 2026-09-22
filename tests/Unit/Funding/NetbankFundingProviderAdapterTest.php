@@ -556,6 +556,24 @@ it('continues through NetBank VCA history pages instead of dropping later paymen
         ->and($payments[100]->transactionId)->toBe('credit-101');
 });
 
+it('fails closed when a full NetBank page contains a malformed transaction', function (): void {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [
+                ...array_map(
+                    fn (int $number): array => netbankTransaction(transactionId: 'credit-'.$number),
+                    range(1, 99),
+                ),
+                'malformed-credit',
+            ],
+        ]),
+    ]);
+
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->incomingPayments(verification()))
+        ->toThrow(NetbankFundingRequestFailed::class);
+});
+
 it('accepts an exact bounded history but refuses a truncated one', function (bool $hasOverflow): void {
     Http::fake(function (Request $request) use ($hasOverflow) {
         if ($request->url() === 'https://auth.netbank.test/oauth2/token') {

@@ -291,7 +291,13 @@ class NetbankFundingApiClient
             throw NetbankFundingRequestFailed::invalidResponse('retrieve-vca-transactions');
         }
 
-        return array_values(array_filter($transactions, 'is_array'));
+        foreach ($transactions as $transaction) {
+            if (! is_array($transaction)) {
+                throw NetbankFundingRequestFailed::invalidResponse('retrieve-vca-transactions');
+            }
+        }
+
+        return array_values($transactions);
     }
 
     /**
