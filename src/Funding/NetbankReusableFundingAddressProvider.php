@@ -10,6 +10,7 @@ use LBHurtado\EmiCore\Contracts\StandingFundingAddressProvider;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingQrCodeData;
 use LBHurtado\EmiCore\Data\Funding\ProviderFundingObservationData;
+use LBHurtado\EmiCore\Data\Funding\ProviderPayerIdentityData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingObservationRequestData;
@@ -184,7 +185,10 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
     private function incomingTransactions(string $fundingAddress, string $accountNumber): array
     {
         return array_values(array_filter(
-            $this->client->transactions($fundingAddress, $accountNumber),
+            iterator_to_array(
+                $this->client->allTransactions($fundingAddress, $accountNumber),
+                false,
+            ),
             fn (array $transaction): bool => $this->isIncomingCredit($transaction, $fundingAddress),
         ));
     }
@@ -254,6 +258,41 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
                 'normalization_version' => self::IncomingCreditNormalizationVersion,
                 'incoming_credit_amount_is_net_received' => true,
             ],
+            payerIdentity: $this->payerIdentity($transaction),
+        );
+    }
+
+    /**
+     * NetBank reports these fields with the transaction. Their presence does
+     * not establish that NetBank performed an identity-verification ceremony.
+     * In particular, an 11-digit source account is not inferred to be mobile.
+     *
+     * @param  array<string, mixed>  $transaction
+     */
+    private function payerIdentity(array $transaction): ?ProviderPayerIdentityData
+    {
+        $name = $this->optionalString(data_get($transaction, 'sender_name'))
+            ?? $this->optionalString(data_get($transaction, 'sender.name'));
+        $accountNumber = $this->optionalString(data_get($transaction, 'source_account.account_number'))
+            ?? $this->optionalString(data_get($transaction, 'sender.account_number'));
+        $institutionCode = $this->optionalString(data_get($transaction, 'source_account.bank_code'))
+            ?? $this->optionalString(data_get($transaction, 'sender.institutionCode'));
+        $mobile = $this->optionalString(data_get($transaction, 'source_offline_user.mobile_no'));
+
+        if ($name === null
+            && $accountNumber === null
+            && $institutionCode === null
+            && $mobile === null) {
+            return null;
+        }
+
+        return new ProviderPayerIdentityData(
+            name: $name,
+            accountNumber: $accountNumber,
+            institutionCode: $institutionCode,
+            mobile: $mobile,
+            verificationSource: 'netbank-vca-transaction-history',
+            providerVerified: false,
         );
     }
 

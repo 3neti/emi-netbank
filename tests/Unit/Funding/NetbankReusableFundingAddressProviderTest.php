@@ -288,6 +288,13 @@ it('returns authoritative provider observations internally for standing address 
         ->and($observations[0]->providerAccountReference)
         ->toBe('sha256:'.hash('sha256', '113001000019'))
         ->and($observations[0]->webhookReceiptId)->toBe(42)
+        ->and($observations[0]->payerIdentity?->name)->toBe('Sensitive Sender')
+        ->and($observations[0]->payerIdentity?->accountNumber)->toBe('sensitive-sender-account')
+        ->and($observations[0]->payerIdentity?->institutionCode)->toBeNull()
+        ->and($observations[0]->payerIdentity?->mobile)->toBeNull()
+        ->and($observations[0]->payerIdentity?->verificationSource)
+        ->toBe('netbank-vca-transaction-history')
+        ->and($observations[0]->payerIdentity?->providerVerified)->toBeFalse()
         ->and($observations[0]->metadata)->toBe([
             'description' => 'EXTERNAL_TRANSFER_INCOMING',
             'type' => 'Credit',
@@ -301,6 +308,92 @@ it('returns authoritative provider observations internally for standing address 
         ])
         ->and($observations[0]->metadata)
         ->not->toHaveKeys(['sender', 'account_number', 'raw_payload']);
+});
+
+it('normalizes provider-reported payer fields without inferring account as mobile', function () {
+    useHmacStandingAddressScheme();
+
+    $provider = app(NetbankReusableFundingAddressProvider::class);
+    $address = standingFundingAddressForPurpose(FundingAddressPurpose::Payment);
+    $transaction = reusableFundingTransaction(destination: $address);
+    $transaction['sender_name'] = 'Apple Hurtado';
+    $transaction['source_account'] = [
+        'account_number' => '09175180722',
+        'bank_code' => 'GXCHPHM2XXX',
+    ];
+    $transaction['source_offline_user'] = [];
+    unset($transaction['sender']);
+
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [$transaction],
+        ]),
+    ]);
+
+    $observation = $provider->observeStandingFundingAddress(
+        new StandingFundingObservationRequestData(
+            fundingAddress: $address,
+            accountReference: 'campaign:characterization',
+            purpose: FundingAddressPurpose::Payment,
+            currency: 'PHP',
+            verificationSource: 'operator',
+        ),
+    )[0];
+
+    expect($observation->payerIdentity?->name)->toBe('Apple Hurtado')
+        ->and($observation->payerIdentity?->accountNumber)->toBe('09175180722')
+        ->and($observation->payerIdentity?->institutionCode)->toBe('GXCHPHM2XXX')
+        ->and($observation->payerIdentity?->mobile)->toBeNull()
+        ->and($observation->payerIdentity?->providerVerified)->toBeFalse()
+        ->and($observation->metadata)->not->toHaveKeys([
+            'payer_name',
+            'payer_account',
+            'payer_institution',
+            'payer_mobile',
+        ]);
+});
+
+it('reads every bounded page for standing-address observations', function () {
+    useHmacStandingAddressScheme();
+
+    $provider = app(NetbankReusableFundingAddressProvider::class);
+    $address = standingFundingAddressForPurpose(FundingAddressPurpose::Payment);
+
+    Http::fake(function (Request $request) use ($address) {
+        if ($request->url() === 'https://auth.netbank.test/oauth2/token') {
+            return Http::response(['access_token' => 'access-token']);
+        }
+
+        $offset = (int) ($request->data()['offset'] ?? 0);
+
+        return Http::response(['transactions' => $offset === 0
+            ? array_map(
+                fn (int $number): array => reusableFundingTransaction(
+                    transactionId: 'standing-credit-'.$number,
+                    destination: $address,
+                ),
+                range(1, 100),
+            )
+            : [reusableFundingTransaction(
+                transactionId: 'standing-credit-101',
+                destination: $address,
+            )],
+        ]);
+    });
+
+    $observations = $provider->observeStandingFundingAddress(
+        new StandingFundingObservationRequestData(
+            fundingAddress: $address,
+            accountReference: 'campaign:characterization',
+            purpose: FundingAddressPurpose::Payment,
+            currency: 'PHP',
+            verificationSource: 'operator',
+        ),
+    );
+
+    expect($observations)->toHaveCount(101)
+        ->and($observations[100]->providerTransactionId)->toBe('standing-credit-101');
 });
 
 it('fails closed when a reusable QR response is not a valid PNG', function () {
