@@ -47,11 +47,19 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
         }
 
         $this->assertFundingAddress($fundingAddress, $routing['alias']);
-        $qrCode = $this->client->generateReusableQrCode(
-            $fundingAddress,
-            $currency,
-            $request->qrMerchant,
-        );
+        $embeddedAmount = ($request->qrAmountMinor ?? 0) > 0;
+        $qrCode = $embeddedAmount
+            ? $this->client->generateQrCode(
+                $fundingAddress,
+                (int) $request->qrAmountMinor,
+                $currency,
+                $request->qrMerchant,
+            )
+            : $this->client->generateReusableQrCode(
+                $fundingAddress,
+                $currency,
+                $request->qrMerchant,
+            );
 
         return new StandingFundingAddressData(
             provider: self::Provider,
@@ -66,9 +74,9 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
             qrCode: new FundingQrCodeData(
                 mimeType: 'image/png',
                 base64Payload: $qrCode,
-                qrMode: 'static',
+                qrMode: $embeddedAmount ? 'dynamic' : 'static',
                 transactionType: 'p2m',
-                embeddedAmount: false,
+                embeddedAmount: $embeddedAmount,
                 providerGenerated: true,
             ),
             reusable: true,
@@ -86,6 +94,7 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
                 'derivation_key_id' => $derived?->keyId,
                 'derivation_counter' => $derived?->counter,
                 'reference_length' => strlen($fundingAddress) - strlen($routing['alias']),
+                'amount_minor' => $embeddedAmount ? $request->qrAmountMinor : null,
             ],
         );
     }

@@ -83,6 +83,43 @@ it('creates a stable open-amount static NetBank QR without registering or limiti
     Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '/v1/vca/create'));
 });
 
+it('creates an amount-embedded dynamic QR for a fixed campaign premium', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response([
+            'access_token' => 'access-token',
+            'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/qrph/generate' => Http::response([
+            'qr_code' => reusableFundingValidPngBase64(),
+        ]),
+    ]);
+
+    $address = app(NetbankReusableFundingAddressProvider::class)
+        ->createStandingFundingAddress(new StandingFundingAddressRequestData(
+            ownerReference: 'App\\Models\\User:5',
+            accountReference: 'campaign:01JFIXED',
+            purpose: FundingAddressPurpose::Payment,
+            currency: 'PHP',
+            routingReference: '09173011987',
+            qrAmountMinor: 5_000,
+        ));
+
+    expect($address->qrCode->qrMode)->toBe('dynamic')
+        ->and($address->qrCode->embeddedAmount)->toBeTrue()
+        ->and($address->displayData['amount_minor'])->toBe(5_000);
+
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.netbank.test/v1/qrph/generate'
+        && $request->data() === [
+            'merchant_name' => 'X Change',
+            'merchant_city' => 'Manila',
+            'qr_type' => 'Dynamic',
+            'qr_transaction_type' => 'P2M',
+            'destination_account' => $address->fundingAddress,
+            'resolution' => 480,
+            'amount' => ['cur' => 'PHP', 'num' => '5000'],
+        ]);
+});
+
 it('maps provider-neutral merchant metadata into the reusable QR payload', function () {
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response([
