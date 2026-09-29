@@ -358,7 +358,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
 
     private function vcaWriteAccountNumber(string $accountNumber): string
     {
-        if (preg_match('/\A000-\d{6}-\d{6}-0\z/', $accountNumber) === 1) {
+        if (preg_match('/\A\d{3}-\d{4}-\d{5}-\d\z/', $accountNumber) === 1) {
             return $accountNumber;
         }
 
@@ -371,9 +371,11 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
         }
 
         return sprintf(
-            '000-%s-%s-0',
-            substr($digits, 0, 6),
-            substr($digits, 6, 6),
+            '%s-0%s-%s-%s',
+            substr($digits, 0, 3),
+            substr($digits, 3, 3),
+            substr($digits, 6, 5),
+            substr($digits, 11, 1),
         );
     }
 
