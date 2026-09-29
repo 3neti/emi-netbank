@@ -53,7 +53,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
 
         if ((bool) config('payment-gateway.netbank.funding.pre_transaction_validation_enabled', true)) {
             $aliasToken = $this->client->generateAliasToken(
-                $routing['account_number'],
+                $this->vcaWriteAccountNumber($routing['account_number']),
                 $alias,
             );
             $this->client->registerPreTransactionReference($reference, $aliasToken);
@@ -66,7 +66,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
                 currency: $currency,
                 validFrom: $issuedAt,
                 validTo: $expiresAt,
-                accountNumber: $routing['account_number'],
+                accountNumber: $this->vcaWriteAccountNumber($routing['account_number']),
             );
         }
 
@@ -341,12 +341,6 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
             throw new NetbankFundingConfigurationException('NetBank corporate account number must contain 8 to 32 digits or hyphens.');
         }
 
-        $accountNumber = str_replace('-', '', $accountNumber);
-
-        if (preg_match('/\A\d{8,32}\z/', $accountNumber) !== 1) {
-            throw new NetbankFundingConfigurationException('NetBank corporate account number must contain 8 to 32 digits.');
-        }
-
         if (preg_match('/\A\d{5}\z/', $alias) !== 1) {
             throw new NetbankFundingConfigurationException('NetBank VCA alias must contain exactly five digits.');
         }
@@ -360,6 +354,27 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
             'account_name' => trim($accountName),
             'alias' => $alias,
         ];
+    }
+
+    private function vcaWriteAccountNumber(string $accountNumber): string
+    {
+        if (preg_match('/\A000-\d{6}-\d{6}-0\z/', $accountNumber) === 1) {
+            return $accountNumber;
+        }
+
+        $digits = str_replace('-', '', $accountNumber);
+
+        if (preg_match('/\A\d{12}\z/', $digits) !== 1) {
+            throw new NetbankFundingConfigurationException(
+                'NetBank VCA write operations require a twelve-digit corporate account number.',
+            );
+        }
+
+        return sprintf(
+            '000-%s-%s-0',
+            substr($digits, 0, 6),
+            substr($digits, 6, 6),
+        );
     }
 
     private function isIncomingCredit(array $transaction, string $vcaNumber): bool

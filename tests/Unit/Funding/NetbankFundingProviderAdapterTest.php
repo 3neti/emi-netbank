@@ -154,7 +154,7 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
     Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/vca/pre-transaction/token'
         && $httpRequest->data() === [
             'vca_alias' => '91500',
-            'account_number' => '113001000019',
+            'account_number' => '000-113001-000019-0',
         ]);
 
     Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/vca/pre-transaction/register'
@@ -166,7 +166,7 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
     Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/vca/create'
         && $httpRequest->data() === [
             'vca_number' => $instructions->providerReference,
-            'account_number' => '113001000019',
+            'account_number' => '000-113001-000019-0',
             'limits' => [
                 'is_one_time_usage' => true,
                 'maximum_amount' => ['cur' => 'PHP', 'num' => '25000'],
@@ -216,7 +216,7 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
     expect($reissued->providerReference)->toBe($instructions->providerReference);
 });
 
-it('normalizes a formatted corporate account before NetBank VCA write requests', function () {
+it('uses the canonical NetBank account form for VCA write requests', function () {
     config()->set(
         'payment-gateway.netbank.funding.corporate_account_number',
         '113-001-00001-9',
@@ -249,10 +249,10 @@ it('normalizes a formatted corporate account before NetBank VCA write requests',
     );
 
     Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.netbank.test/v1/vca/pre-transaction/token'
-        && $request->data()['account_number'] === '113001000019');
+        && $request->data()['account_number'] === '000-113001-000019-0');
 
     Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.netbank.test/v1/vca/create'
-        && $request->data()['account_number'] === '113001000019');
+        && $request->data()['account_number'] === '000-113001-000019-0');
 });
 
 it('uses a dedicated destination without reading shared routing values', function () {
@@ -289,7 +289,7 @@ it('uses a dedicated destination without reading shared routing values', functio
         && $httpRequest->data()['vca_alias_token'] === 'dedicated-registration-token');
 
     Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/vca/create'
-        && $httpRequest->data()['account_number'] === '991100001234');
+        && $httpRequest->data()['account_number'] === '000-991100-001234-0');
 });
 
 it('generates a VCA alias token for an explicit account and alias', function () {
