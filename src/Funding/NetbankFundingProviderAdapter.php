@@ -341,6 +341,12 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
             throw new NetbankFundingConfigurationException('NetBank corporate account number must contain 8 to 32 digits or hyphens.');
         }
 
+        $accountNumber = str_replace('-', '', $accountNumber);
+
+        if (preg_match('/\A\d{8,32}\z/', $accountNumber) !== 1) {
+            throw new NetbankFundingConfigurationException('NetBank corporate account number must contain 8 to 32 digits.');
+        }
+
         if (preg_match('/\A\d{5}\z/', $alias) !== 1) {
             throw new NetbankFundingConfigurationException('NetBank VCA alias must contain exactly five digits.');
         }

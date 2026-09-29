@@ -216,6 +216,45 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
     expect($reissued->providerReference)->toBe($instructions->providerReference);
 });
 
+it('normalizes a formatted corporate account before NetBank VCA write requests', function () {
+    config()->set(
+        'payment-gateway.netbank.funding.corporate_account_number',
+        '113-001-00001-9',
+    );
+
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response([
+            'access_token' => 'access-token',
+            'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/vca/pre-transaction/token' => Http::response([
+            'vca_alias_token' => 'normalized-account-token',
+        ]),
+        'https://api.netbank.test/v1/vca/pre-transaction/register' => Http::response([], 204),
+        'https://api.netbank.test/v1/vca/create' => Http::response([], 201),
+        'https://api.netbank.test/v1/qrph/generate' => Http::response([
+            'qr_code' => validPngBase64(),
+        ]),
+    ]);
+
+    app(NetbankFundingProviderAdapter::class)->createFundingInstructions(
+        new FundingInstructionRequestData(
+            provider: 'netbank',
+            fundingReference: 'FND-FORMATTED-ACCOUNT',
+            amountMinor: 2_500,
+            currency: 'PHP',
+            accountReference: 'account-123',
+            expiresAt: new DateTimeImmutable('2026-07-23T10:00:00+08:00'),
+        ),
+    );
+
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.netbank.test/v1/vca/pre-transaction/token'
+        && $request->data()['account_number'] === '113001000019');
+
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.netbank.test/v1/vca/create'
+        && $request->data()['account_number'] === '113001000019');
+});
+
 it('uses a dedicated destination without reading shared routing values', function () {
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response([
