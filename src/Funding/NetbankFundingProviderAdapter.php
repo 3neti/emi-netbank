@@ -14,6 +14,7 @@ use LBHurtado\EmiCore\Data\Funding\FundingQrCodeData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderEventHintData;
 use LBHurtado\EmiCore\Data\Funding\ProviderFundingObservationData;
+use LBHurtado\EmiCore\Data\Funding\ProviderPayerIdentityData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookReceiptData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookRequestData;
 use LBHurtado\EmiCore\Data\Funding\WebhookAuthenticationData;
@@ -231,6 +232,32 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
                 'normalization_version' => 'netbank-incoming-credit-v2',
                 'reported_fee_mirrors_gross_amount' => $feeMirrorsGrossAmount,
             ],
+            payerIdentity: $this->payerIdentity($transaction),
+        );
+    }
+
+    /** @param array<string, mixed> $transaction */
+    private function payerIdentity(array $transaction): ?ProviderPayerIdentityData
+    {
+        $name = $this->optionalString(data_get($transaction, 'sender_name'))
+            ?? $this->optionalString(data_get($transaction, 'sender.name'));
+        $accountNumber = $this->optionalString(data_get($transaction, 'source_account.account_number'))
+            ?? $this->optionalString(data_get($transaction, 'sender.account_number'));
+        $institutionCode = $this->optionalString(data_get($transaction, 'source_account.bank_code'))
+            ?? $this->optionalString(data_get($transaction, 'sender.institutionCode'));
+        $mobile = $this->optionalString(data_get($transaction, 'source_offline_user.mobile_no'));
+
+        if ($name === null && $accountNumber === null && $institutionCode === null && $mobile === null) {
+            return null;
+        }
+
+        return new ProviderPayerIdentityData(
+            name: $name,
+            accountNumber: $accountNumber,
+            institutionCode: $institutionCode,
+            mobile: $mobile,
+            verificationSource: 'netbank-vca-transaction-history',
+            providerVerified: false,
         );
     }
 

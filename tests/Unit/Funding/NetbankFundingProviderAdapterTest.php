@@ -529,10 +529,40 @@ it('verifies a settled incoming credit from authoritative VCA history', function
         ])
         ->and($observation->metadata)->not->toHaveKeys(['sender', 'account_number']);
 
+    expect($observation->payerIdentity?->name)->toBe('Sensitive Sender')
+        ->and($observation->payerIdentity?->accountNumber)->toBe('sensitive-sender-account')
+        ->and($observation->payerIdentity?->mobile)->toBeNull()
+        ->and($observation->payerIdentity?->providerVerified)->toBeFalse();
+
     Http::assertSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.netbank.test/v1/vca/915001234567890123456/transactions?')
         && $request->method() === 'GET'
         && $request->data()['account_number'] === '113001000019'
         && $request->data()['limit'] === 100);
+});
+
+it('preserves wallet payer fields from exact-payment verification', function () {
+    $transaction = netbankTransaction();
+    $transaction['sender_name'] = 'Wallet Payer';
+    $transaction['source_account'] = [
+        'account_number' => '09175180722',
+        'bank_code' => 'GXCHPHM2XXX',
+    ];
+    unset($transaction['sender']);
+
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [$transaction],
+        ]),
+    ]);
+
+    $identity = app(NetbankFundingProviderAdapter::class)->verifyFunding(verification())->payerIdentity;
+
+    expect($identity?->name)->toBe('Wallet Payer')
+        ->and($identity?->accountNumber)->toBe('09175180722')
+        ->and($identity?->institutionCode)->toBe('GXCHPHM2XXX')
+        ->and($identity?->mobile)->toBeNull()
+        ->and($identity?->providerVerified)->toBeFalse();
 });
 
 it('reports every incoming payment with provider-reported payer fields without guessing a mobile', function () {
