@@ -517,6 +517,9 @@ it('verifies a settled incoming credit from authoritative VCA history', function
         ->and($observation->providerAccountReference)->toBe('sha256:'.hash('sha256', '113001000019'))
         ->and($observation->settledAt?->format(DATE_ATOM))->toBe('2026-07-23T01:06:00+00:00')
         ->and($observation->webhookReceiptId)->toBe(42)
+        ->and($observation->payerIdentity?->name)->toBe('Sensitive Sender')
+        ->and($observation->payerIdentity?->accountNumber)->toBe('sensitive-sender-account')
+        ->and($observation->payerIdentity?->mobile)->toBeNull()
         ->and($observation->metadata)->toBe([
             'description' => 'EXTERNAL_TRANSFER_INCOMING',
             'type' => 'Credit',
@@ -533,6 +536,30 @@ it('verifies a settled incoming credit from authoritative VCA history', function
         && $request->method() === 'GET'
         && $request->data()['account_number'] === '113001000019'
         && $request->data()['limit'] === 100);
+});
+
+it('derives a QR Ph payer mobile from the NetBank source account', function () {
+    $transaction = netbankTransaction();
+    $transaction['sender_name'] = 'Francesca Gabrielle Hurtado';
+    $transaction['source_account'] = [
+        'account_number' => '09177210752',
+        'bank_code' => 'GXCHPHM2XXX',
+    ];
+    unset($transaction['sender']);
+
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [$transaction],
+        ]),
+    ]);
+
+    $observation = app(NetbankFundingProviderAdapter::class)->verifyFunding(verification());
+
+    expect($observation->payerIdentity?->name)->toBe('Francesca Gabrielle Hurtado')
+        ->and($observation->payerIdentity?->accountNumber)->toBe('09177210752')
+        ->and($observation->payerIdentity?->institutionCode)->toBe('GXCHPHM2XXX')
+        ->and($observation->payerIdentity?->mobile)->toBe('09177210752');
 });
 
 it('reports every incoming payment with provider-reported payer fields without guessing a mobile', function () {

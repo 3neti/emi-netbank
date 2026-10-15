@@ -14,6 +14,7 @@ use LBHurtado\EmiCore\Data\Funding\FundingQrCodeData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderEventHintData;
 use LBHurtado\EmiCore\Data\Funding\ProviderFundingObservationData;
+use LBHurtado\EmiCore\Data\Funding\ProviderPayerIdentityData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookReceiptData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookRequestData;
 use LBHurtado\EmiCore\Data\Funding\WebhookAuthenticationData;
@@ -231,7 +232,66 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
                 'normalization_version' => 'netbank-incoming-credit-v2',
                 'reported_fee_mirrors_gross_amount' => $feeMirrorsGrossAmount,
             ],
+            payerIdentity: $this->payerIdentity($transaction),
         );
+    }
+
+    /**
+     * NetBank reports the sender identity alongside the transaction. For QR
+     * Ph wallet payments, the source account is the payer's Philippine mobile
+     * number even when NetBank does not populate source_offline_user.
+     *
+     * @param  array<string, mixed>  $transaction
+     */
+    private function payerIdentity(array $transaction): ?ProviderPayerIdentityData
+    {
+        $name = $this->optionalString(data_get($transaction, 'sender_name'))
+            ?? $this->optionalString(data_get($transaction, 'sender.name'));
+        $accountNumber = $this->optionalString(data_get($transaction, 'source_account.account_number'))
+            ?? $this->optionalString(data_get($transaction, 'sender.account_number'));
+        $institutionCode = $this->optionalString(data_get($transaction, 'source_account.bank_code'))
+            ?? $this->optionalString(data_get($transaction, 'sender.institutionCode'));
+        $mobile = $this->optionalString(data_get($transaction, 'source_offline_user.mobile_no'))
+            ?? $this->mobileFromSourceAccount($accountNumber);
+
+        if ($name === null
+            && $accountNumber === null
+            && $institutionCode === null
+            && $mobile === null) {
+            return null;
+        }
+
+        return new ProviderPayerIdentityData(
+            name: $name,
+            accountNumber: $accountNumber,
+            institutionCode: $institutionCode,
+            mobile: $mobile,
+            verificationSource: 'netbank-vca-transaction-history',
+            providerVerified: false,
+        );
+    }
+
+    private function mobileFromSourceAccount(?string $accountNumber): ?string
+    {
+        if ($accountNumber === null) {
+            return null;
+        }
+
+        $digits = preg_replace('/\\D+/', '', $accountNumber);
+
+        if (! is_string($digits)) {
+            return null;
+        }
+
+        if (preg_match('/\\A09\\d{9}\\z/', $digits) === 1) {
+            return $digits;
+        }
+
+        if (preg_match('/\\A639\\d{9}\\z/', $digits) === 1) {
+            return '0'.substr($digits, 2);
+        }
+
+        return null;
     }
 
     /**
