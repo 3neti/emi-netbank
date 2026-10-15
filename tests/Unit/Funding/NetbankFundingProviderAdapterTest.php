@@ -527,7 +527,7 @@ it('verifies a settled incoming credit from authoritative VCA history', function
             'destination_verified' => true,
             'expected_amount_matches' => true,
             'expected_currency_matches' => true,
-            'normalization_version' => 'netbank-incoming-credit-v2',
+            'normalization_version' => 'netbank-incoming-credit-v3',
             'reported_fee_mirrors_gross_amount' => false,
         ])
         ->and($observation->metadata)->not->toHaveKeys(['sender', 'account_number']);
@@ -725,7 +725,7 @@ it('treats a reported fee that mirrors the full incoming credit as zero', functi
         ->and($observation->feeAmountMinor)->toBe(0)
         ->and($observation->netAmountMinor)->toBe(13_799)
         ->and($observation->metadata['normalization_version'])
-        ->toBe('netbank-incoming-credit-v2')
+        ->toBe('netbank-incoming-credit-v3')
         ->and($observation->metadata['reported_fee_mirrors_gross_amount'])
         ->toBeTrue();
 });

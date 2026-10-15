@@ -229,7 +229,7 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
                 'destination_verified' => true,
                 'expected_amount_matches' => $grossAmountMinor === $verification->expectedAmountMinor,
                 'expected_currency_matches' => $transactionCurrency === $currency,
-                'normalization_version' => 'netbank-incoming-credit-v2',
+                'normalization_version' => 'netbank-incoming-credit-v3',
                 'reported_fee_mirrors_gross_amount' => $feeMirrorsGrossAmount,
             ],
             payerIdentity: $this->payerIdentity($transaction),
