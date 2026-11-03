@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace LBHurtado\PaymentGateway\Exceptions;
 
+use LBHurtado\EmiCore\Contracts\ProviderFundingRequestFailure;
 use RuntimeException;
 
-class NetbankFundingRequestFailed extends RuntimeException
+class NetbankFundingRequestFailed extends RuntimeException implements ProviderFundingRequestFailure
 {
     private function __construct(
         public readonly string $operation,
@@ -15,6 +16,11 @@ class NetbankFundingRequestFailed extends RuntimeException
         string $message,
     ) {
         parent::__construct($message);
+    }
+
+    public function operation(): string
+    {
+        return $this->operation;
     }
 
     public static function forOperation(string $operation, int $status): self

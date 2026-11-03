@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Http;
 use LBHurtado\EmiCore\Contracts\DirectQrFundingInstructionIssuer;
 use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
 use LBHurtado\EmiCore\Contracts\IncomingPaymentReader;
+use LBHurtado\EmiCore\Contracts\ProviderFundingConfigurationFailure;
+use LBHurtado\EmiCore\Contracts\ProviderFundingRequestFailure;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
@@ -99,6 +101,15 @@ it('registers as a provider-neutral funding adapter', function () {
     expect($adapter)->toBeInstanceOf(FundingProviderAdapter::class)
         ->and($adapter->providerCode())->toBe('netbank')
         ->and(collect(app()->tagged('emi.funding-provider-adapters'))->contains($adapter))->toBeTrue();
+});
+
+it('exposes provider-neutral failure classifications without removing the existing exceptions', function () {
+    $failure = NetbankFundingRequestFailed::forOperation('generate-qrph', 503);
+
+    expect($failure)->toBeInstanceOf(ProviderFundingRequestFailure::class)
+        ->and($failure->operation())->toBe('generate-qrph')
+        ->and(NetbankFundingConfigurationException::missing('alias'))
+        ->toBeInstanceOf(ProviderFundingConfigurationFailure::class);
 });
 
 it('offers direct QR instructions without registering or limiting a virtual account', function () {
