@@ -155,6 +155,36 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
 
     public function verifyFunding(FundingVerificationData $verification): ProviderFundingObservationData
     {
+        try {
+            return $this->verifyFundingFromAddress($verification);
+        } catch (NetbankFundingNotVerified $exception) {
+            $accountNumber = preg_replace('/\D+/', '', (string) $verification->destination?->bankAccountNumber) ?? '';
+            if (! $verification->allowDestinationHistoryFallback || strlen($accountNumber) < 12
+                || $accountNumber === $verification->fundingAddress) {
+                throw $exception;
+            }
+
+            $observation = $this->verifyFundingFromAddress(new FundingVerificationData(
+                provider: $verification->provider,
+                fundingIntentReference: $verification->fundingIntentReference,
+                expectedAmountMinor: $verification->expectedAmountMinor,
+                currency: $verification->currency,
+                providerRequestId: $verification->providerRequestId,
+                fundingAddress: $accountNumber,
+                webhookReceiptId: $verification->webhookReceiptId,
+                destination: $verification->destination,
+                observedAfter: $verification->observedAfter,
+                observedBefore: $verification->observedBefore,
+            ));
+            $observation->verificationSource = 'netbank-corporate-account-transaction-history';
+            $observation->metadata = [...$observation->metadata, 'verification_path' => 'corporate_account'];
+
+            return $observation;
+        }
+    }
+
+    private function verifyFundingFromAddress(FundingVerificationData $verification): ProviderFundingObservationData
+    {
         $this->assertProvider($verification->provider);
         $this->assertPositiveAmount($verification->expectedAmountMinor);
         $currency = $this->currency($verification->currency);

@@ -24,6 +24,7 @@ use LBHurtado\PaymentGateway\Support\CoreWalletProxy;
 use LBHurtado\PaymentGateway\Support\NetbankProviderBalanceReader;
 use LBHurtado\PaymentGateway\Support\NetbankProviderLivePreflightProbe;
 use LBHurtado\PaymentGateway\Support\NetbankProviderStatementReader;
+use LBHurtado\PaymentGateway\Support\NetbankProvisioningProfile;
 use LBHurtado\PaymentGateway\Support\NetbankSettlementProvider;
 use LBHurtado\PaymentGateway\Support\NetbankSourceAccountReadiness;
 use LBHurtado\Wallet\Services\SystemUserResolverService;
@@ -85,6 +86,8 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         $this->app->tag(NetbankProviderStatementReader::class, 'emi.provider-statement-readers');
         $this->app->singleton(NetbankSourceAccountReadiness::class);
         $this->app->tag(NetbankSourceAccountReadiness::class, 'emi.provider-source-account-readiness');
+        $this->app->singleton(NetbankProvisioningProfile::class);
+        $this->app->tag(NetbankProvisioningProfile::class, 'emi.provider-provisioning-profiles');
         $this->app->singleton(NetbankProviderLivePreflightProbe::class);
         $this->app->tag(
             NetbankProviderLivePreflightProbe::class,

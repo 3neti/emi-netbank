@@ -12,6 +12,7 @@ use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
 use LBHurtado\EmiCore\Contracts\IncomingPaymentReader;
 use LBHurtado\EmiCore\Contracts\ProviderFundingConfigurationFailure;
 use LBHurtado\EmiCore\Contracts\ProviderFundingRequestFailure;
+use LBHurtado\EmiCore\Contracts\ProviderProvisioningProfile;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
@@ -27,6 +28,7 @@ use LBHurtado\PaymentGateway\Exceptions\NetbankFundingNotVerified;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingRequestFailed;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingApiClient;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
+use LBHurtado\PaymentGateway\Support\NetbankProvisioningProfile;
 
 beforeEach(function () {
     CarbonImmutable::setTestNow('2026-07-23 09:00:00 Asia/Manila');
@@ -101,6 +103,18 @@ it('registers as a provider-neutral funding adapter', function () {
     expect($adapter)->toBeInstanceOf(FundingProviderAdapter::class)
         ->and($adapter->providerCode())->toBe('netbank')
         ->and(collect(app()->tagged('emi.funding-provider-adapters'))->contains($adapter))->toBeTrue();
+});
+
+it('registers the provider provisioning profile and preserves legacy references', function () {
+    $profile = app(NetbankProvisioningProfile::class);
+
+    expect($profile)->toBeInstanceOf(ProviderProvisioningProfile::class)
+        ->and(collect(app()->tagged('emi.provider-provisioning-profiles'))->contains($profile))->toBeTrue()
+        ->and($profile->supportsMode('ledger_wallet'))->toBeTrue()
+        ->and($profile->supportsMode('bank_account_link'))->toBeTrue()
+        ->and($profile->supportsMode('unsupported'))->toBeFalse()
+        ->and($profile->legacyBankAccountReference('GXCHPHM2XXX', '*******1987'))->toBe('NETBANK-GXCHPHM2XXX-XXXXXXX1987')
+        ->and($profile->legacyPrincipalReference('42', 'ledger_wallet'))->toBe('netbank-42-ledger_wallet');
 });
 
 it('exposes provider-neutral failure classifications without removing the existing exceptions', function () {
@@ -583,6 +597,37 @@ it('verifies a settled incoming credit from authoritative VCA history', function
         && $request->method() === 'GET'
         && $request->data()['account_number'] === '113001000019'
         && $request->data()['limit'] === 100);
+});
+
+it('checks the destination account history only when the caller permits fallback', function () {
+    $transaction = netbankTransaction();
+    $transaction['destination_account']['account_alias'] = '991100001234';
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/915001234567890123456/transactions*' => Http::response(['transactions' => []]),
+        'https://api.netbank.test/v1/vca/991100001234/transactions*' => Http::response(['transactions' => [$transaction]]),
+    ]);
+    $verification = verification();
+    $verification->destination = dedicatedDestination();
+    $verification->allowDestinationHistoryFallback = true;
+
+    $observation = app(NetbankFundingProviderAdapter::class)->verifyFunding($verification);
+
+    expect($observation->verificationSource)->toBe('netbank-corporate-account-transaction-history')
+        ->and($observation->metadata['verification_path'])->toBe('corporate_account');
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/v1/vca/991100001234/transactions'));
+});
+
+it('does not check destination account history when fallback is disabled', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/915001234567890123456/transactions*' => Http::response(['transactions' => []]),
+    ]);
+    $verification = verification();
+    $verification->destination = dedicatedDestination();
+
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->verifyFunding($verification))->toThrow(ProviderFundingNotObserved::class);
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/v1/vca/991100001234/transactions'));
 });
 
 it('derives a QR Ph payer mobile from the NetBank source account', function () {
