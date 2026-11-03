@@ -24,6 +24,7 @@ it('advertises only the provider-neutral capabilities implemented by NetBank', f
         ->and($manifest->capabilities)->toBe([
             ProviderCapability::ReadinessProbe,
             ProviderCapability::BalanceRead,
+            ProviderCapability::StatementRead,
             ProviderCapability::FundingEvidenceRead,
             ProviderCapability::FundingInstructionIssue,
             ProviderCapability::StandingFundingAddress,
