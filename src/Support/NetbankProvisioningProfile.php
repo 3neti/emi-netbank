@@ -6,10 +6,27 @@ namespace LBHurtado\PaymentGateway\Support;
 
 use LBHurtado\EmiCore\Contracts\ProviderClaimantBankProvisioningPolicy;
 use LBHurtado\EmiCore\Contracts\ProviderDefaultProvisioningMode;
+use LBHurtado\EmiCore\Contracts\ProviderProvisioningPresentation;
 use LBHurtado\EmiCore\Contracts\ProviderProvisioningProfile;
 
-final class NetbankProvisioningProfile implements ProviderClaimantBankProvisioningPolicy, ProviderDefaultProvisioningMode, ProviderProvisioningProfile
+final class NetbankProvisioningProfile implements ProviderClaimantBankProvisioningPolicy, ProviderDefaultProvisioningMode, ProviderProvisioningPresentation, ProviderProvisioningProfile
 {
+    public function defaultProvisioningTopology(): string
+    {
+        return 'ledger_pooled';
+    }
+
+    public function provisioningPresentation(string $mode): ?array
+    {
+        return $mode === 'bank_account_link' ? [
+            'title' => 'Add payout destination',
+            'description' => 'Add a payout destination for NetBank ledger-backed disbursement.',
+            'steps' => ['bank_account', 'consent', 'ready'],
+            'fields' => ['bank_code', 'account_number', 'account_name', 'consent'],
+            'actions' => ['continue'],
+        ] : null;
+    }
+
     public function defaultProvisioningMode(): string
     {
         return 'bank_account_link';
