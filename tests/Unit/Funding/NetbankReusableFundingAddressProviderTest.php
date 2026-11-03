@@ -11,6 +11,7 @@ use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressProfileRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingObservationRequestData;
 use LBHurtado\EmiCore\Enums\FundingAddressPurpose;
+use LBHurtado\EmiCore\Models\ProviderFundingObservation;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingRequestFailed;
 use LBHurtado\PaymentGateway\Funding\NetbankReusableFundingAddressProvider;
@@ -205,6 +206,23 @@ it('rejects invalid merchant metadata before calling NetBank', function () {
         );
 
     Http::assertNothingSent();
+});
+
+it('recognizes only the supported historic incoming-credit correction', function (): void {
+    $original = (new ProviderFundingObservation)->forceFill([
+        'provider_code' => 'netbank', 'gross_amount_minor' => 2500,
+        'fee_amount_minor' => 2500, 'net_amount_minor' => 0,
+    ]);
+    $corrected = (new ProviderFundingObservation)->forceFill([
+        'provider_code' => 'netbank', 'gross_amount_minor' => 2500,
+        'fee_amount_minor' => 0, 'net_amount_minor' => 2500,
+        'metadata' => ['normalization_version' => 'netbank-standing-credit-v2', 'incoming_credit_amount_is_net_received' => true],
+    ]);
+    $provider = app(NetbankReusableFundingAddressProvider::class);
+
+    expect($provider->correctionVersion($original, $corrected))->toBe('netbank-standing-credit-v2');
+    $corrected->provider_code = 'other';
+    expect($provider->correctionVersion($original, $corrected))->toBeNull();
 });
 
 it('implements the provider-neutral standing address contract with purpose-separated addresses', function () {

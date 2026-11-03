@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use InvalidArgumentException;
 use LBHurtado\EmiCore\Contracts\StandingFundingAddressProfileInspector;
 use LBHurtado\EmiCore\Contracts\StandingFundingAddressProvider;
+use LBHurtado\EmiCore\Contracts\StandingFundingCorrectionPolicy;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingQrCodeData;
 use LBHurtado\EmiCore\Data\Funding\ProviderFundingObservationData;
@@ -18,10 +19,11 @@ use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressProfileRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingObservationRequestData;
 use LBHurtado\EmiCore\Enums\FundingAddressPurpose;
+use LBHurtado\EmiCore\Models\ProviderFundingObservation;
 use LBHurtado\PaymentGateway\Enums\NetbankStandingAddressScheme;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 
-final class NetbankReusableFundingAddressProvider implements StandingFundingAddressProfileInspector, StandingFundingAddressProvider
+final class NetbankReusableFundingAddressProvider implements StandingFundingAddressProfileInspector, StandingFundingAddressProvider, StandingFundingCorrectionPolicy
 {
     private const Provider = 'netbank';
 
@@ -35,6 +37,20 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
     public function providerCode(): string
     {
         return self::Provider;
+    }
+
+    public function correctionVersion(ProviderFundingObservation $original, ProviderFundingObservation $corrected): ?string
+    {
+        return $original->provider_code === self::Provider
+            && $corrected->provider_code === self::Provider
+            && $original->fee_amount_minor === $original->gross_amount_minor
+            && $original->net_amount_minor === 0
+            && $corrected->fee_amount_minor === 0
+            && $corrected->net_amount_minor === $corrected->gross_amount_minor
+            && data_get($corrected->metadata, 'normalization_version') === self::IncomingCreditNormalizationVersion
+            && data_get($corrected->metadata, 'incoming_credit_amount_is_net_received') === true
+                ? self::IncomingCreditNormalizationVersion
+                : null;
     }
 
     public function inspectStandingFundingAddressProfile(StandingFundingAddressProfileRequestData $request): StandingFundingAddressProfileData
