@@ -28,6 +28,7 @@ use LBHurtado\PaymentGateway\Exceptions\NetbankFundingNotVerified;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingRequestFailed;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingApiClient;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
+use LBHurtado\PaymentGateway\Support\NetbankPayerMobileInterpreter;
 use LBHurtado\PaymentGateway\Support\NetbankProvisioningProfile;
 
 beforeEach(function () {
@@ -115,6 +116,16 @@ it('registers the provider provisioning profile and preserves legacy references'
         ->and($profile->supportsMode('unsupported'))->toBeFalse()
         ->and($profile->legacyBankAccountReference('GXCHPHM2XXX', '*******1987'))->toBe('NETBANK-GXCHPHM2XXX-XXXXXXX1987')
         ->and($profile->legacyPrincipalReference('42', 'ledger_wallet'))->toBe('netbank-42-ledger_wallet');
+});
+
+it('interprets wallet payer mobiles only for supported institutions and formats', function () {
+    $interpreter = app(NetbankPayerMobileInterpreter::class);
+
+    expect($interpreter->resolve('GXCHPHM2XXX', '09173011987'))->toBe('639173011987')
+        ->and($interpreter->resolve('MAYA', '+639173011987'))->toBe('639173011987')
+        ->and($interpreter->resolve('OTHER', '09173011987'))->toBeNull()
+        ->and($interpreter->resolve('GCASH', '1234'))->toBeNull()
+        ->and(collect(app()->tagged('emi.provider-payer-mobile-interpreters'))->contains($interpreter))->toBeTrue();
 });
 
 it('exposes provider-neutral failure classifications without removing the existing exceptions', function () {

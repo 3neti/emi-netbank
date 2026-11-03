@@ -21,6 +21,7 @@ use LBHurtado\PaymentGateway\Funding\NetbankReusableFundingAddressProvider;
 use LBHurtado\PaymentGateway\Gateways\Netbank\NetbankPaymentGateway;
 use LBHurtado\PaymentGateway\Gateways\Omnipay\OmnipayPaymentGateway;
 use LBHurtado\PaymentGateway\Support\CoreWalletProxy;
+use LBHurtado\PaymentGateway\Support\NetbankPayerMobileInterpreter;
 use LBHurtado\PaymentGateway\Support\NetbankProviderBalanceReader;
 use LBHurtado\PaymentGateway\Support\NetbankProviderLivePreflightProbe;
 use LBHurtado\PaymentGateway\Support\NetbankProviderStatementReader;
@@ -86,6 +87,8 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         $this->app->tag(NetbankProviderStatementReader::class, 'emi.provider-statement-readers');
         $this->app->singleton(NetbankSourceAccountReadiness::class);
         $this->app->tag(NetbankSourceAccountReadiness::class, 'emi.provider-source-account-readiness');
+        $this->app->singleton(NetbankPayerMobileInterpreter::class);
+        $this->app->tag(NetbankPayerMobileInterpreter::class, 'emi.provider-payer-mobile-interpreters');
         $this->app->singleton(NetbankProvisioningProfile::class);
         $this->app->tag(NetbankProvisioningProfile::class, 'emi.provider-provisioning-profiles');
         $this->app->singleton(NetbankProviderLivePreflightProbe::class);
