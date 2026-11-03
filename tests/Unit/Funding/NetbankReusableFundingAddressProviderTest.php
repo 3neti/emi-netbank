@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use LBHurtado\EmiCore\Contracts\StandingFundingAddressProvider;
 use LBHurtado\EmiCore\Data\Funding\FundingQrMerchantData;
+use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressProfileRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingObservationRequestData;
 use LBHurtado\EmiCore\Enums\FundingAddressPurpose;
@@ -41,6 +42,27 @@ beforeEach(function () {
         'timeout_seconds' => 10,
         'verification_lookback_days' => 7,
     ]);
+});
+
+it('describes verified mobile routing through the core profile capability', function (): void {
+    $provider = app(NetbankReusableFundingAddressProvider::class);
+    $ready = $provider->inspectStandingFundingAddressProfile(new StandingFundingAddressProfileRequestData('+63 917 301 1987', true));
+    $unverified = $provider->inspectStandingFundingAddressProfile(new StandingFundingAddressProfileRequestData('+63 917 301 1987', false));
+    $legacy = $provider->inspectStandingFundingAddressProfile(new StandingFundingAddressProfileRequestData(null, false, '123', null));
+
+    expect($ready->ready)->toBeTrue()->and($ready->routingReference)->toBe('09173011987')
+        ->and($ready->requiresVerifiedMobile)->toBeTrue()
+        ->and($unverified->ready)->toBeFalse()->and($unverified->routingReference)->toBeNull()
+        ->and($legacy->status)->toBe('legacy_address_requires_retirement');
+});
+
+it('checks HMAC readiness without requiring mobile routing', function (): void {
+    config()->set('payment-gateway.netbank.funding.standing_address.scheme', 'netbank-account-hmac-v2');
+    $provider = app(NetbankReusableFundingAddressProvider::class);
+    $routingOnly = $provider->inspectStandingFundingAddressProfile(new StandingFundingAddressProfileRequestData(null, false, validateReadiness: false));
+    expect($routingOnly->requiresVerifiedMobile)->toBeFalse()->and($routingOnly->routingReference)->toBeNull();
+    expect(fn () => $provider->inspectStandingFundingAddressProfile(new StandingFundingAddressProfileRequestData(null, false)))
+        ->toThrow(NetbankFundingConfigurationException::class);
 });
 
 it('creates a stable open-amount static NetBank QR without registering or limiting a VCA', function () {

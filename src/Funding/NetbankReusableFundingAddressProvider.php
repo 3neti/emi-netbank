@@ -6,18 +6,22 @@ namespace LBHurtado\PaymentGateway\Funding;
 
 use DateTimeImmutable;
 use InvalidArgumentException;
+use LBHurtado\EmiCore\Contracts\StandingFundingAddressProfileInspector;
 use LBHurtado\EmiCore\Contracts\StandingFundingAddressProvider;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingQrCodeData;
 use LBHurtado\EmiCore\Data\Funding\ProviderFundingObservationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderPayerIdentityData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressData;
+use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressProfileData;
+use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressProfileRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingObservationRequestData;
 use LBHurtado\EmiCore\Enums\FundingAddressPurpose;
+use LBHurtado\PaymentGateway\Enums\NetbankStandingAddressScheme;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 
-final class NetbankReusableFundingAddressProvider implements StandingFundingAddressProvider
+final class NetbankReusableFundingAddressProvider implements StandingFundingAddressProfileInspector, StandingFundingAddressProvider
 {
     private const Provider = 'netbank';
 
@@ -31,6 +35,64 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
     public function providerCode(): string
     {
         return self::Provider;
+    }
+
+    public function inspectStandingFundingAddressProfile(StandingFundingAddressProfileRequestData $request): StandingFundingAddressProfileData
+    {
+        $required = [
+            'api_url', 'token_url', 'client_id', 'client_secret', 'corporate_account_number',
+            'corporate_account_name', 'vca_alias', 'reference_key', 'qr_endpoint', 'qr_merchant_name', 'qr_merchant_city',
+        ];
+        $configured = collect($required)->every(static fn (string $key): bool => is_string(config('payment-gateway.netbank.funding.'.$key))
+            && trim((string) config('payment-gateway.netbank.funding.'.$key)) !== '');
+        $this->profile->referenceLength();
+        $currentScheme = $request->existingFundingAddress === null ? $this->profile->scheme() : null;
+        $scheme = $request->existingFundingAddress !== null
+            ? ($request->existingScheme ?? 'legacy-unclassified')
+            : $currentScheme?->value;
+        $requiresMobile = $currentScheme === NetbankStandingAddressScheme::MobileV1;
+        $digits = preg_replace('/\D+/', '', $request->mobile ?? '') ?: '';
+        if (preg_match('/\A639\d{9}\z/', $digits) === 1) {
+            $digits = '0'.substr($digits, 2);
+        } elseif (preg_match('/\A9\d{9}\z/', $digits) === 1) {
+            $digits = '0'.$digits;
+        }
+        $mobileReady = $request->mobileVerified && preg_match('/\A09\d{9}\z/', $digits) === 1;
+
+        if ($request->existingFundingAddress !== null) {
+            $ready = strlen($request->existingFundingAddress) === 16;
+            $status = $ready ? 'available' : 'legacy_address_requires_retirement';
+        } elseif ($requiresMobile) {
+            $ready = $mobileReady;
+            $status = $ready ? 'available' : 'mobile_not_verified';
+        } elseif ($request->validateReadiness) {
+            $this->profile->derive(new StandingFundingAddressRequestData(
+                ownerReference: 'cockpit-readiness', accountReference: 'cockpit-readiness',
+                purpose: FundingAddressPurpose::AccountFunding, currency: 'PHP',
+            ));
+            $ready = true;
+            $status = 'available';
+        } else {
+            $ready = true;
+            $status = 'available';
+        }
+
+        return new StandingFundingAddressProfileData(
+            configured: $configured,
+            ready: $ready,
+            status: $status,
+            scheme: $scheme,
+            schemeLabel: match ($scheme) {
+                NetbankStandingAddressScheme::MobileV1->value => 'Verified mobile suffix',
+                NetbankStandingAddressScheme::AccountHmacV2->value => 'Opaque Account reference',
+                default => 'Persisted legacy address',
+            },
+            schemeWarning: $scheme === NetbankStandingAddressScheme::MobileV1->value
+                ? 'Development-friendly but easier to correlate; production rejects this scheme.' : null,
+            productionSafe: $scheme === NetbankStandingAddressScheme::AccountHmacV2->value,
+            requiresVerifiedMobile: $requiresMobile,
+            routingReference: $requiresMobile && $mobileReady ? $digits : null,
+        );
     }
 
     public function createStandingFundingAddress(
