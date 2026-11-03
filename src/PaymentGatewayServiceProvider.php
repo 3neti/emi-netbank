@@ -17,6 +17,7 @@ use LBHurtado\PaymentGateway\Console\Commands\TestGCashMemoCommand;
 use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
 use LBHurtado\PaymentGateway\Contracts\WalletProxy;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
+use LBHurtado\PaymentGateway\Funding\NetbankReusableFundingAddressProvider;
 use LBHurtado\PaymentGateway\Gateways\Netbank\NetbankPaymentGateway;
 use LBHurtado\PaymentGateway\Gateways\Omnipay\OmnipayPaymentGateway;
 use LBHurtado\PaymentGateway\Support\CoreWalletProxy;
@@ -59,6 +60,16 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         $this->app->singleton(SystemUserResolverService::class, fn () => new SystemUserResolverService);
         $this->app->singleton(NetbankFundingProviderAdapter::class);
         $this->app->tag(NetbankFundingProviderAdapter::class, 'emi.funding-provider-adapters');
+        $this->app->singleton(NetbankReusableFundingAddressProvider::class);
+        $this->app->booting(function ($app): void {
+            foreach ($app->tagged('emi.standing-funding-address-providers') as $provider) {
+                if ($provider instanceof NetbankReusableFundingAddressProvider) {
+                    return;
+                }
+            }
+
+            $app->tag(NetbankReusableFundingAddressProvider::class, 'emi.standing-funding-address-providers');
+        });
         $this->app->singleton(NetbankSettlementProvider::class);
         $this->app->tag(NetbankSettlementProvider::class, [
             'emi.settlement-providers',

@@ -6,6 +6,7 @@ use Bavix\Wallet\Interfaces\Wallet;
 use LBHurtado\EmiCore\Contracts\ProviderWalletResolver;
 use LBHurtado\PaymentGateway\Adapters\NetbankPayoutProvider;
 use LBHurtado\PaymentGateway\Contracts\WalletProxy;
+use LBHurtado\PaymentGateway\Funding\NetbankReusableFundingAddressProvider;
 use LBHurtado\PaymentGateway\PaymentGatewayServiceProvider;
 
 it('bridges the core wallet resolver for the existing NetBank payout adapter', function (): void {
@@ -16,6 +17,13 @@ it('bridges the core wallet resolver for the existing NetBank payout adapter', f
 
     expect(app(WalletProxy::class)->resolve())->toBe($wallet)
         ->and(config('emi.payout_providers.netbank'))->toBe(NetbankPayoutProvider::class);
+});
+
+it('registers the reusable standing address provider', function (): void {
+    $providers = iterator_to_array(app()->tagged('emi.standing-funding-address-providers'));
+
+    expect($providers)->toHaveCount(1)
+        ->and($providers[0])->toBeInstanceOf(NetbankReusableFundingAddressProvider::class);
 });
 
 it('rejects an unsupported provider wallet', function (): void {
