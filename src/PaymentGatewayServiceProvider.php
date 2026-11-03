@@ -8,15 +8,18 @@ use Illuminate\Support\ServiceProvider;
 use LBHurtado\EmiCore\Contracts\DeploymentConnectionContributor;
 use LBHurtado\EmiCore\Contracts\DeploymentEnvironmentContributor;
 use LBHurtado\MoneyIssuer\Support\BankRegistry;
+use LBHurtado\PaymentGateway\Adapters\NetbankPayoutProvider;
 use LBHurtado\PaymentGateway\Configuration\NetbankDeploymentContributor;
 use LBHurtado\PaymentGateway\Console\Commands\CheckBalanceCommand;
 use LBHurtado\PaymentGateway\Console\Commands\GenerateQrCommand;
 use LBHurtado\PaymentGateway\Console\Commands\TestDisbursementCommand;
 use LBHurtado\PaymentGateway\Console\Commands\TestGCashMemoCommand;
 use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
+use LBHurtado\PaymentGateway\Contracts\WalletProxy;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
 use LBHurtado\PaymentGateway\Gateways\Netbank\NetbankPaymentGateway;
 use LBHurtado\PaymentGateway\Gateways\Omnipay\OmnipayPaymentGateway;
+use LBHurtado\PaymentGateway\Support\CoreWalletProxy;
 use LBHurtado\PaymentGateway\Support\NetbankProviderBalanceReader;
 use LBHurtado\PaymentGateway\Support\NetbankProviderLivePreflightProbe;
 use LBHurtado\PaymentGateway\Support\NetbankProviderStatementReader;
@@ -27,6 +30,10 @@ class PaymentGatewayServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bindIf(WalletProxy::class, CoreWalletProxy::class);
+        if (! config()->has('emi.payout_providers.netbank')) {
+            config()->set('emi.payout_providers.netbank', NetbankPayoutProvider::class);
+        }
         $this->app->singleton(BankRegistry::class, fn () => new BankRegistry);
         $this->app->singleton(NetbankDeploymentContributor::class);
         $this->app->tag(NetbankDeploymentContributor::class, [
