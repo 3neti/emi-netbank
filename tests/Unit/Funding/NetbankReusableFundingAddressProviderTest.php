@@ -244,6 +244,7 @@ it('implements the provider-neutral standing address contract with purpose-separ
         ->and($accountFunding->fundingAddress)->not->toBe($payment->fundingAddress)
         ->and($accountFunding->fundingAddress)->not->toBe($collisionRetry->fundingAddress)
         ->and($accountFundingAgain->fundingAddress)->toBe($accountFunding->fundingAddress)
+        ->and($accountFunding->supportsCollisionRetry)->toBeTrue()
         ->and($accountFunding->displayData['derivation_scheme'])->toBe('netbank-account-hmac-v2')
         ->and($accountFunding->displayData['derivation_key_id'])->toBe('v2-test')
         ->and($accountFunding->displayData['derivation_counter'])->toBe(0)

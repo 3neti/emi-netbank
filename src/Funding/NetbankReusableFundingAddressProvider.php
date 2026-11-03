@@ -142,6 +142,7 @@ final class NetbankReusableFundingAddressProvider implements StandingFundingAddr
                 providerGenerated: true,
             ),
             reusable: true,
+            supportsCollisionRetry: $derived?->scheme === NetbankStandingAddressScheme::AccountHmacV2,
             displayData: [
                 'institution' => 'NetBank',
                 'merchant_name' => $request->qrMerchant?->displayName
