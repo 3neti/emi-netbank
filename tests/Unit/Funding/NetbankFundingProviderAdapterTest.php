@@ -9,9 +9,11 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use LBHurtado\EmiCore\Contracts\DirectQrFundingInstructionIssuer;
 use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
+use LBHurtado\EmiCore\Contracts\IncomingPaymentReader;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
+use LBHurtado\EmiCore\Data\Funding\IncomingPaymentData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookReceiptData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookRequestData;
 use LBHurtado\EmiCore\Data\Funding\WebhookAuthenticationData;
@@ -624,6 +626,8 @@ it('reports every incoming payment with provider-reported payer fields without g
     $payments = app(NetbankFundingProviderAdapter::class)->incomingPayments(verification());
 
     expect($payments)->toHaveCount(2)
+        ->and(app(NetbankFundingProviderAdapter::class))->toBeInstanceOf(IncomingPaymentReader::class)
+        ->and($payments[0])->toBeInstanceOf(IncomingPaymentData::class)
         ->and($payments[0]->transactionId)->toBe('credit-1')
         ->and($payments[0]->payerName)->toBe('Apple Hurtado')
         ->and($payments[0]->payerAccountNumber)->toBe('09175180722')
