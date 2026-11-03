@@ -17,6 +17,7 @@ use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
 use LBHurtado\EmiCore\Data\Funding\IncomingPaymentData;
+use LBHurtado\EmiCore\Data\Funding\ProviderFundingHistoryRequestData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookReceiptData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookRequestData;
 use LBHurtado\EmiCore\Data\Funding\WebhookAuthenticationData;
@@ -104,6 +105,24 @@ it('registers as a provider-neutral funding adapter', function () {
     expect($adapter)->toBeInstanceOf(FundingProviderAdapter::class)
         ->and($adapter->providerCode())->toBe('netbank')
         ->and(collect(app()->tagged('emi.funding-provider-adapters'))->contains($adapter))->toBeTrue();
+});
+
+it('creates a provider funding-history request from the configured destination', function () {
+    $request = new ProviderFundingHistoryRequestData(
+        provider: 'netbank', reference: 'funding-request:one', connectionReference: 'primary',
+        expectedAmountMinor: 5000, currency: 'PHP',
+        observedAfter: new DateTimeImmutable('2026-07-23T00:00:00Z'),
+        observedBefore: new DateTimeImmutable('2026-07-23T01:00:00Z'),
+    );
+    $adapter = app(NetbankFundingProviderAdapter::class);
+    $verification = $adapter->createFundingHistoryRequest($request);
+
+    expect($verification?->fundingAddress)->toBe('113001000019')
+        ->and($verification?->destination?->accountReference)->toBe('treasury-connection:primary')
+        ->and($verification?->expectedAmountMinor)->toBe(5000)
+        ->and($verification?->observedAfter)->toEqual($request->observedAfter);
+    config()->set('payment-gateway.netbank.funding.corporate_account_number', 'invalid');
+    expect($adapter->createFundingHistoryRequest($request))->toBeNull();
 });
 
 it('registers the provider provisioning profile and preserves legacy references', function () {

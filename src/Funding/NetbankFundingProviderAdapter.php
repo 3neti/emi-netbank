@@ -9,12 +9,14 @@ use InvalidArgumentException;
 use LBHurtado\EmiCore\Contracts\DirectQrFundingInstructionIssuer;
 use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
 use LBHurtado\EmiCore\Contracts\IncomingPaymentReader;
+use LBHurtado\EmiCore\Contracts\ProviderFundingHistoryRequestFactory;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionsData;
 use LBHurtado\EmiCore\Data\Funding\FundingQrCodeData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderEventHintData;
+use LBHurtado\EmiCore\Data\Funding\ProviderFundingHistoryRequestData;
 use LBHurtado\EmiCore\Data\Funding\ProviderFundingObservationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderPayerIdentityData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookReceiptData;
@@ -24,7 +26,7 @@ use LBHurtado\PaymentGateway\Exceptions\NetbankFundingAmbiguous;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingNotVerified;
 
-class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer, FundingProviderAdapter, IncomingPaymentReader
+class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer, FundingProviderAdapter, IncomingPaymentReader, ProviderFundingHistoryRequestFactory
 {
     private const Provider = 'netbank';
 
@@ -35,6 +37,38 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
     public function providerCode(): string
     {
         return self::Provider;
+    }
+
+    public function createFundingHistoryRequest(ProviderFundingHistoryRequestData $request): ?FundingVerificationData
+    {
+        $this->assertProvider($request->provider);
+        $account = trim((string) config('payment-gateway.netbank.funding.corporate_account_number'));
+        $address = preg_replace('/\D+/', '', $account) ?? '';
+        if (strlen($address) < 12) {
+            return null;
+        }
+
+        return new FundingVerificationData(
+            provider: self::Provider,
+            fundingIntentReference: $request->reference,
+            expectedAmountMinor: $request->expectedAmountMinor,
+            currency: $request->currency,
+            fundingAddress: $address,
+            destination: new FundingDestinationData(
+                provider: self::Provider,
+                mode: 'shared_corporate_account',
+                destinationType: 'bank_account',
+                accountReference: 'treasury-connection:'.$request->connectionReference,
+                displayReference: 'configured-corporate-account',
+                fingerprint: hash('sha256', $account),
+                verificationStatus: 'configured',
+                bankAccountNumber: $account,
+                bankAccountName: trim((string) config('payment-gateway.netbank.funding.corporate_account_name')),
+                routingAlias: trim((string) config('payment-gateway.netbank.funding.vca_alias')),
+            ),
+            observedAfter: $request->observedAfter,
+            observedBefore: $request->observedBefore,
+        );
     }
 
     public function createDirectQrFundingInstructions(FundingInstructionRequestData $request): FundingInstructionsData
