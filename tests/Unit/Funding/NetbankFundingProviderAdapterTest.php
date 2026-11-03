@@ -169,6 +169,21 @@ it('exposes provider-neutral failure classifications without removing the existi
         ->toBeInstanceOf(ProviderFundingConfigurationFailure::class);
 });
 
+it('constructs a standing on-demand transfer without a provider call', function (): void {
+    Http::preventStrayRequests();
+    $request = new FundingInstructionRequestData(
+        provider: 'netbank', fundingReference: 'order-123', amountMinor: 2500,
+        currency: 'php', accountReference: 'wallet:dedicated', destination: dedicatedDestination(),
+        expiresAt: new DateTimeImmutable('2026-07-23T10:00:00+08:00'),
+    );
+    $instructions = app(NetbankFundingProviderAdapter::class)->createOnDemandFundingInstructions($request, false);
+
+    expect($instructions->fundingAddress)->toBe('991100001234')
+        ->and($instructions->displayData['payment_reference'])->toBe('order-123')
+        ->and($instructions->qrCode)->toBeNull();
+    Http::assertNothingSent();
+});
+
 it('offers direct QR instructions without registering or limiting a virtual account', function () {
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response([

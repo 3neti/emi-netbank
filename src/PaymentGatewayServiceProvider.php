@@ -63,6 +63,7 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         $this->app->singleton(SystemUserResolverService::class, fn () => new SystemUserResolverService);
         $this->app->singleton(NetbankFundingProviderAdapter::class);
         $this->app->tag(NetbankFundingProviderAdapter::class, 'emi.funding-provider-adapters');
+        $this->app->tag(NetbankFundingProviderAdapter::class, 'emi.funding-destination-resolvers');
         $this->app->singleton(NetbankReusableFundingAddressProvider::class);
         $this->app->booting(function ($app): void {
             foreach ($app->tagged('emi.standing-funding-address-providers') as $provider) {

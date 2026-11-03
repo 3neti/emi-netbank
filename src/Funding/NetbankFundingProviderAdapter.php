@@ -9,7 +9,9 @@ use InvalidArgumentException;
 use LBHurtado\EmiCore\Contracts\DirectQrFundingInstructionIssuer;
 use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
 use LBHurtado\EmiCore\Contracts\IncomingPaymentReader;
+use LBHurtado\EmiCore\Contracts\OnDemandFundingInstructionProvider;
 use LBHurtado\EmiCore\Contracts\ProviderFundingDestinationConfigurator;
+use LBHurtado\EmiCore\Contracts\ProviderFundingDestinationResolver;
 use LBHurtado\EmiCore\Contracts\ProviderFundingHistoryRequestFactory;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
@@ -18,17 +20,19 @@ use LBHurtado\EmiCore\Data\Funding\FundingQrCodeData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderEventHintData;
 use LBHurtado\EmiCore\Data\Funding\ProviderFundingDestinationConfigurationData;
+use LBHurtado\EmiCore\Data\Funding\ProviderFundingDestinationLinkData;
 use LBHurtado\EmiCore\Data\Funding\ProviderFundingHistoryRequestData;
 use LBHurtado\EmiCore\Data\Funding\ProviderFundingObservationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderPayerIdentityData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookReceiptData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookRequestData;
 use LBHurtado\EmiCore\Data\Funding\WebhookAuthenticationData;
+use LBHurtado\EmiCore\Exceptions\ProviderFundingDestinationUnavailable;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingAmbiguous;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingNotVerified;
 
-class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer, FundingProviderAdapter, IncomingPaymentReader, ProviderFundingDestinationConfigurator, ProviderFundingHistoryRequestFactory
+class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer, FundingProviderAdapter, IncomingPaymentReader, OnDemandFundingInstructionProvider, ProviderFundingDestinationConfigurator, ProviderFundingDestinationResolver, ProviderFundingHistoryRequestFactory
 {
     private const Provider = 'netbank';
 
@@ -39,6 +43,85 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
     public function providerCode(): string
     {
         return self::Provider;
+    }
+
+    public function sharedFundingDestination(string $accountReference): FundingDestinationData
+    {
+        $account = $this->destinationValue(config('payment-gateway.netbank.funding.corporate_account_number'), 'corporate_account_number');
+        $name = $this->destinationValue(config('payment-gateway.netbank.funding.corporate_account_name'), 'corporate_account_name');
+        $alias = $this->destinationValue(config('payment-gateway.netbank.funding.vca_alias'), 'vca_alias');
+
+        return new FundingDestinationData(
+            provider: self::Provider, mode: 'shared', destinationType: 'bank_account', accountReference: $accountReference,
+            displayReference: '•••• '.mb_substr($account, -4)." · VCA {$alias}",
+            fingerprint: hash('sha256', implode('|', [self::Provider, $account, $alias])), verificationStatus: 'platform_configured',
+            bankAccountNumber: $account, bankAccountName: $name, routingAlias: $alias,
+        );
+    }
+
+    public function dedicatedFundingDestination(ProviderFundingDestinationLinkData $link, string $accountReference): FundingDestinationData
+    {
+        if (! in_array($link->verificationStatus, ['verified', 'credential_supplied', 'routing_configured'], true)) {
+            throw new ProviderFundingDestinationUnavailable('The dedicated NetBank destination has not completed provider verification.');
+        }
+        $account = $this->destinationValue(data_get($link->routing, 'bank_account_number'), 'bank_account_number');
+        $name = $this->destinationValue(data_get($link->routing, 'bank_account_name'), 'bank_account_name');
+        $alias = $this->destinationValue(data_get($link->routing, 'vca_alias'), 'vca_alias');
+
+        return new FundingDestinationData(
+            provider: self::Provider, mode: 'dedicated', destinationType: 'bank_account', accountReference: $accountReference,
+            displayReference: $link->displayReference ?? '•••• '.mb_substr($account, -4)." · VCA {$alias}",
+            fingerprint: $link->fingerprint ?? hash('sha256', implode('|', [self::Provider, $account, $alias])),
+            verificationStatus: $link->verificationStatus, providerAccountId: $link->providerAccountId,
+            bankAccountNumber: $account, bankAccountName: $name, routingAlias: $alias,
+        );
+    }
+
+    private function destinationValue(mixed $value, string $key): string
+    {
+        if (! is_string($value) || trim($value) === '') {
+            throw new ProviderFundingDestinationUnavailable("Funding destination [{$key}] is unavailable.");
+        }
+
+        return trim($value);
+    }
+
+    public function createOnDemandFundingInstructions(FundingInstructionRequestData $request, bool $fixedQrEnabled): FundingInstructionsData
+    {
+        if ($fixedQrEnabled) {
+            $mode = strtolower(trim((string) config('x-change.issuance_funding.on_demand.fixed_qr_ph.netbank_mode', 'direct_qr')));
+
+            return match ($mode) {
+                'direct_qr' => $this->createDirectQrFundingInstructions($request),
+                'registered_vca' => $this->createFundingInstructions($request),
+                default => throw new InvalidArgumentException("Unsupported NetBank on-demand QR mode [{$mode}]."),
+            };
+        }
+
+        $destination = $request->destination;
+        if ($request->provider !== self::Provider || ! $destination instanceof FundingDestinationData
+            || $destination->provider !== self::Provider || $destination->destinationType !== 'bank_account') {
+            throw new InvalidArgumentException('Standing bank-transfer instructions require a NetBank bank-account destination.');
+        }
+        $accountNumber = trim((string) $destination->bankAccountNumber);
+        $accountName = trim((string) $destination->bankAccountName);
+        if ($accountNumber === '' || $accountName === '') {
+            throw new InvalidArgumentException('Standing bank-transfer instructions require an account number and account name.');
+        }
+
+        return new FundingInstructionsData(
+            provider: self::Provider,
+            providerReference: 'bank-transfer:'.$request->fundingReference,
+            amountMinor: $request->amountMinor,
+            currency: mb_strtoupper($request->currency),
+            expiresAt: $request->expiresAt,
+            fundingAddress: $accountNumber,
+            displayData: [
+                'institution' => 'NetBank', 'account_name' => $accountName, 'destination_account' => $accountNumber,
+                'amount_minor' => $request->amountMinor, 'currency' => mb_strtoupper($request->currency),
+                'payment_reference' => $request->fundingReference, 'one_time' => true, 'delivery' => 'bank-transfer',
+            ],
+        );
     }
 
     public function configureFundingDestination(array $input): ProviderFundingDestinationConfigurationData
