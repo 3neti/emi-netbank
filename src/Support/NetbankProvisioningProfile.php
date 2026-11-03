@@ -4,13 +4,19 @@ declare(strict_types=1);
 
 namespace LBHurtado\PaymentGateway\Support;
 
+use LBHurtado\EmiCore\Contracts\ProviderClaimantBankProvisioningPolicy;
 use LBHurtado\EmiCore\Contracts\ProviderProvisioningProfile;
 
-final class NetbankProvisioningProfile implements ProviderProvisioningProfile
+final class NetbankProvisioningProfile implements ProviderClaimantBankProvisioningPolicy, ProviderProvisioningProfile
 {
     public function providerCode(): string
     {
         return 'netbank';
+    }
+
+    public function requiresClaimantBankProvisioning(): bool
+    {
+        return true;
     }
 
     public function supportsMode(string $mode): bool

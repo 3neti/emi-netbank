@@ -146,6 +146,7 @@ it('registers the provider provisioning profile and preserves legacy references'
         ->and($profile->supportsMode('ledger_wallet'))->toBeTrue()
         ->and($profile->supportsMode('bank_account_link'))->toBeTrue()
         ->and($profile->supportsMode('unsupported'))->toBeFalse()
+        ->and($profile->requiresClaimantBankProvisioning())->toBeTrue()
         ->and($profile->legacyBankAccountReference('GXCHPHM2XXX', '*******1987'))->toBe('NETBANK-GXCHPHM2XXX-XXXXXXX1987')
         ->and($profile->legacyPrincipalReference('42', 'ledger_wallet'))->toBe('netbank-42-ledger_wallet');
 });
