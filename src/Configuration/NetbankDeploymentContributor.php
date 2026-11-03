@@ -6,12 +6,24 @@ namespace LBHurtado\PaymentGateway\Configuration;
 
 use LBHurtado\EmiCore\Contracts\DeploymentConnectionContributor;
 use LBHurtado\EmiCore\Contracts\DeploymentEnvironmentContributor;
+use LBHurtado\EmiCore\Contracts\ProviderCommissioningFingerprintInputs;
 use LBHurtado\EmiCore\Data\Configuration\EnvironmentVariableData;
 use LBHurtado\EmiCore\Data\Configuration\ProviderConnectionTemplateData;
 use LBHurtado\EmiCore\Enums\ProviderCapability;
 
-final class NetbankDeploymentContributor implements DeploymentConnectionContributor, DeploymentEnvironmentContributor
+final class NetbankDeploymentContributor implements DeploymentConnectionContributor, DeploymentEnvironmentContributor, ProviderCommissioningFingerprintInputs
 {
+    public function settlementAccountFingerprintInputs(): array
+    {
+        return [
+            'source_account_number' => config('disbursement.source.account_number'),
+            'sender_customer_id' => config('omnipay.gateways.netbank.options.senderCustomerId'),
+            'vca_alias' => config('disbursement.client.alias'),
+            'funding_corporate_account_number' => config('payment-gateway.netbank.funding.corporate_account_number'),
+            'funding_vca_alias' => config('payment-gateway.netbank.funding.vca_alias'),
+        ];
+    }
+
     public function providerCode(): string
     {
         return 'netbank';

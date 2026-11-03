@@ -5,10 +5,16 @@ declare(strict_types=1);
 namespace LBHurtado\PaymentGateway\Support;
 
 use LBHurtado\EmiCore\Contracts\ProviderClaimantBankProvisioningPolicy;
+use LBHurtado\EmiCore\Contracts\ProviderDefaultProvisioningMode;
 use LBHurtado\EmiCore\Contracts\ProviderProvisioningProfile;
 
-final class NetbankProvisioningProfile implements ProviderClaimantBankProvisioningPolicy, ProviderProvisioningProfile
+final class NetbankProvisioningProfile implements ProviderClaimantBankProvisioningPolicy, ProviderDefaultProvisioningMode, ProviderProvisioningProfile
 {
+    public function defaultProvisioningMode(): string
+    {
+        return 'bank_account_link';
+    }
+
     public function providerCode(): string
     {
         return 'netbank';
