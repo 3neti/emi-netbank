@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use LBHurtado\EmiCore\Contracts\DirectQrFundingInstructionIssuer;
 use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
 use LBHurtado\EmiCore\Contracts\IncomingPaymentReader;
+use LBHurtado\EmiCore\Contracts\ProviderFundingDestinationConfigurator;
 use LBHurtado\EmiCore\Contracts\ProviderFundingHistoryRequestFactory;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
@@ -16,6 +17,7 @@ use LBHurtado\EmiCore\Data\Funding\FundingInstructionsData;
 use LBHurtado\EmiCore\Data\Funding\FundingQrCodeData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderEventHintData;
+use LBHurtado\EmiCore\Data\Funding\ProviderFundingDestinationConfigurationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderFundingHistoryRequestData;
 use LBHurtado\EmiCore\Data\Funding\ProviderFundingObservationData;
 use LBHurtado\EmiCore\Data\Funding\ProviderPayerIdentityData;
@@ -26,7 +28,7 @@ use LBHurtado\PaymentGateway\Exceptions\NetbankFundingAmbiguous;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingNotVerified;
 
-class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer, FundingProviderAdapter, IncomingPaymentReader, ProviderFundingHistoryRequestFactory
+class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer, FundingProviderAdapter, IncomingPaymentReader, ProviderFundingDestinationConfigurator, ProviderFundingHistoryRequestFactory
 {
     private const Provider = 'netbank';
 
@@ -37,6 +39,28 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
     public function providerCode(): string
     {
         return self::Provider;
+    }
+
+    public function configureFundingDestination(array $input): ProviderFundingDestinationConfigurationData
+    {
+        $accountNumber = (string) ($input['account_number'] ?? '');
+        $accountName = (string) ($input['account_name'] ?? '');
+        $alias = (string) ($input['vca_alias'] ?? '');
+
+        if ($accountNumber === '' || $accountName === '' || $alias === '') {
+            throw new InvalidArgumentException('Funding routing details are incomplete.');
+        }
+
+        return new ProviderFundingDestinationConfigurationData(
+            mode: 'bank_account_link',
+            verificationStatus: 'routing_configured',
+            identityLevel: 'corporate_account_vca',
+            capabilities: ['funding', 'vca'],
+            metadata: ['registration_token_lifecycle' => 'ephemeral_per_vca'],
+            routingProfile: ['bank_account_number' => $accountNumber, 'bank_account_name' => $accountName, 'vca_alias' => $alias],
+            fingerprint: hash('sha256', "netbank|{$accountNumber}|{$alias}"),
+            displayReference: '•••• '.substr($accountNumber, -4)." · VCA {$alias}",
+        );
     }
 
     public function createFundingHistoryRequest(ProviderFundingHistoryRequestData $request): ?FundingVerificationData

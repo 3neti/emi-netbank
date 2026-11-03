@@ -32,6 +32,19 @@ use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
 use LBHurtado\PaymentGateway\Support\NetbankPayerMobileInterpreter;
 use LBHurtado\PaymentGateway\Support\NetbankProvisioningProfile;
 
+it('describes dedicated funding routing without retaining registration tokens', function (): void {
+    $configuration = app(NetbankFundingProviderAdapter::class)->configureFundingDestination([
+        'account_number' => '991100001234',
+        'account_name' => 'Dedicated Treasury',
+        'vca_alias' => '54321',
+        'vca_alias_token' => 'must-not-be-stored',
+    ]);
+
+    expect($configuration->displayReference)->toBe('•••• 1234 · VCA 54321')
+        ->and($configuration->fingerprint)->toBe(hash('sha256', 'netbank|991100001234|54321'))
+        ->and($configuration->routingProfile)->not->toHaveKey('vca_alias_token');
+});
+
 beforeEach(function () {
     CarbonImmutable::setTestNow('2026-07-23 09:00:00 Asia/Manila');
     Cache::clear();
