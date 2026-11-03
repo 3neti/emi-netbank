@@ -6,6 +6,7 @@ namespace LBHurtado\PaymentGateway\Funding;
 
 use DateTimeImmutable;
 use InvalidArgumentException;
+use LBHurtado\EmiCore\Contracts\DirectQrFundingInstructionIssuer;
 use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
@@ -22,7 +23,7 @@ use LBHurtado\PaymentGateway\Exceptions\NetbankFundingAmbiguous;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingNotVerified;
 
-class NetbankFundingProviderAdapter implements FundingProviderAdapter
+class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer, FundingProviderAdapter
 {
     private const Provider = 'netbank';
 
@@ -33,6 +34,11 @@ class NetbankFundingProviderAdapter implements FundingProviderAdapter
     public function providerCode(): string
     {
         return self::Provider;
+    }
+
+    public function createDirectQrFundingInstructions(FundingInstructionRequestData $request): FundingInstructionsData
+    {
+        return (new NetbankDirectQrFundingInstructionIssuer($this->client))->create($request);
     }
 
     public function createFundingInstructions(FundingInstructionRequestData $request): FundingInstructionsData

@@ -7,6 +7,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use LBHurtado\EmiCore\Contracts\DirectQrFundingInstructionIssuer;
 use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
@@ -96,6 +97,39 @@ it('registers as a provider-neutral funding adapter', function () {
     expect($adapter)->toBeInstanceOf(FundingProviderAdapter::class)
         ->and($adapter->providerCode())->toBe('netbank')
         ->and(collect(app()->tagged('emi.funding-provider-adapters'))->contains($adapter))->toBeTrue();
+});
+
+it('offers direct QR instructions without registering or limiting a virtual account', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response([
+            'access_token' => 'access-token',
+            'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/qrph/generate' => Http::response([
+            'qr_code' => validPngBase64(),
+        ]),
+    ]);
+
+    $adapter = app(NetbankFundingProviderAdapter::class);
+    $request = new FundingInstructionRequestData(
+        provider: 'netbank',
+        fundingReference: 'FND-01K123456789',
+        amountMinor: 25_000,
+        currency: 'php',
+        accountReference: 'account-123',
+        expiresAt: new DateTimeImmutable('2026-07-23T10:00:00+08:00'),
+    );
+
+    expect($adapter)->toBeInstanceOf(DirectQrFundingInstructionIssuer::class);
+    $instructions = $adapter->createDirectQrFundingInstructions($request);
+
+    expect($instructions->providerReference)->toMatch('/\A91500\d{16}\z/')
+        ->and($instructions->amountMinor)->toBe(25_000)
+        ->and($instructions->currency)->toBe('PHP')
+        ->and($instructions->qrCode?->base64Payload)->toBe(validPngBase64())
+        ->and($instructions->displayData['address_registration'])->toBe('not-requested');
+
+    Http::assertSentCount(2);
 });
 
 it('creates deterministic exact one-time VCA funding instructions', function () {
