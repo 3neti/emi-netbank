@@ -7,10 +7,17 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use LBHurtado\EmiCore\Contracts\DirectQrFundingInstructionIssuer;
 use LBHurtado\EmiCore\Contracts\FundingProviderAdapter;
+use LBHurtado\EmiCore\Contracts\IncomingPaymentReader;
+use LBHurtado\EmiCore\Contracts\ProviderFundingConfigurationFailure;
+use LBHurtado\EmiCore\Contracts\ProviderFundingRequestFailure;
+use LBHurtado\EmiCore\Contracts\ProviderProvisioningProfile;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
 use LBHurtado\EmiCore\Data\Funding\FundingVerificationData;
+use LBHurtado\EmiCore\Data\Funding\IncomingPaymentData;
+use LBHurtado\EmiCore\Data\Funding\ProviderFundingHistoryRequestData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookReceiptData;
 use LBHurtado\EmiCore\Data\Funding\ProviderWebhookRequestData;
 use LBHurtado\EmiCore\Data\Funding\WebhookAuthenticationData;
@@ -22,6 +29,21 @@ use LBHurtado\PaymentGateway\Exceptions\NetbankFundingNotVerified;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingRequestFailed;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingApiClient;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
+use LBHurtado\PaymentGateway\Support\NetbankPayerMobileInterpreter;
+use LBHurtado\PaymentGateway\Support\NetbankProvisioningProfile;
+
+it('describes dedicated funding routing without retaining registration tokens', function (): void {
+    $configuration = app(NetbankFundingProviderAdapter::class)->configureFundingDestination([
+        'account_number' => '991100001234',
+        'account_name' => 'Dedicated Treasury',
+        'vca_alias' => '54321',
+        'vca_alias_token' => 'must-not-be-stored',
+    ]);
+
+    expect($configuration->displayReference)->toBe('•••• 1234 · VCA 54321')
+        ->and($configuration->fingerprint)->toBe(hash('sha256', 'netbank|991100001234|54321'))
+        ->and($configuration->routingProfile)->not->toHaveKey('vca_alias_token');
+});
 
 beforeEach(function () {
     CarbonImmutable::setTestNow('2026-07-23 09:00:00 Asia/Manila');
@@ -96,6 +118,104 @@ it('registers as a provider-neutral funding adapter', function () {
     expect($adapter)->toBeInstanceOf(FundingProviderAdapter::class)
         ->and($adapter->providerCode())->toBe('netbank')
         ->and(collect(app()->tagged('emi.funding-provider-adapters'))->contains($adapter))->toBeTrue();
+});
+
+it('creates a provider funding-history request from the configured destination', function () {
+    $request = new ProviderFundingHistoryRequestData(
+        provider: 'netbank', reference: 'funding-request:one', connectionReference: 'primary',
+        expectedAmountMinor: 5000, currency: 'PHP',
+        observedAfter: new DateTimeImmutable('2026-07-23T00:00:00Z'),
+        observedBefore: new DateTimeImmutable('2026-07-23T01:00:00Z'),
+    );
+    $adapter = app(NetbankFundingProviderAdapter::class);
+    $verification = $adapter->createFundingHistoryRequest($request);
+
+    expect($verification?->fundingAddress)->toBe('113001000019')
+        ->and($verification?->destination?->accountReference)->toBe('treasury-connection:primary')
+        ->and($verification?->expectedAmountMinor)->toBe(5000)
+        ->and($verification?->observedAfter)->toEqual($request->observedAfter);
+    config()->set('payment-gateway.netbank.funding.corporate_account_number', 'invalid');
+    expect($adapter->createFundingHistoryRequest($request))->toBeNull();
+});
+
+it('registers the provider provisioning profile and preserves legacy references', function () {
+    $profile = app(NetbankProvisioningProfile::class);
+
+    expect($profile)->toBeInstanceOf(ProviderProvisioningProfile::class)
+        ->and(collect(app()->tagged('emi.provider-provisioning-profiles'))->contains($profile))->toBeTrue()
+        ->and($profile->supportsMode('ledger_wallet'))->toBeTrue()
+        ->and($profile->supportsMode('bank_account_link'))->toBeTrue()
+        ->and($profile->supportsMode('unsupported'))->toBeFalse()
+        ->and($profile->requiresClaimantBankProvisioning())->toBeTrue()
+        ->and($profile->legacyBankAccountReference('GXCHPHM2XXX', '*******1987'))->toBe('NETBANK-GXCHPHM2XXX-XXXXXXX1987')
+        ->and($profile->legacyPrincipalReference('42', 'ledger_wallet'))->toBe('netbank-42-ledger_wallet');
+});
+
+it('interprets wallet payer mobiles only for supported institutions and formats', function () {
+    $interpreter = app(NetbankPayerMobileInterpreter::class);
+
+    expect($interpreter->resolve('GXCHPHM2XXX', '09173011987'))->toBe('639173011987')
+        ->and($interpreter->resolve('MAYA', '+639173011987'))->toBe('639173011987')
+        ->and($interpreter->resolve('OTHER', '09173011987'))->toBeNull()
+        ->and($interpreter->resolve('GCASH', '1234'))->toBeNull()
+        ->and(collect(app()->tagged('emi.provider-payer-mobile-interpreters'))->contains($interpreter))->toBeTrue();
+});
+
+it('exposes provider-neutral failure classifications without removing the existing exceptions', function () {
+    $failure = NetbankFundingRequestFailed::forOperation('generate-qrph', 503);
+
+    expect($failure)->toBeInstanceOf(ProviderFundingRequestFailure::class)
+        ->and($failure->operation())->toBe('generate-qrph')
+        ->and(NetbankFundingConfigurationException::missing('alias'))
+        ->toBeInstanceOf(ProviderFundingConfigurationFailure::class);
+});
+
+it('constructs a standing on-demand transfer without a provider call', function (): void {
+    Http::preventStrayRequests();
+    $request = new FundingInstructionRequestData(
+        provider: 'netbank', fundingReference: 'order-123', amountMinor: 2500,
+        currency: 'php', accountReference: 'wallet:dedicated', destination: dedicatedDestination(),
+        expiresAt: new DateTimeImmutable('2026-07-23T10:00:00+08:00'),
+    );
+    $instructions = app(NetbankFundingProviderAdapter::class)->createOnDemandFundingInstructions($request, false);
+
+    expect($instructions->fundingAddress)->toBe('991100001234')
+        ->and($instructions->displayData['payment_reference'])->toBe('order-123')
+        ->and($instructions->qrCode)->toBeNull();
+    Http::assertNothingSent();
+});
+
+it('offers direct QR instructions without registering or limiting a virtual account', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response([
+            'access_token' => 'access-token',
+            'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/qrph/generate' => Http::response([
+            'qr_code' => validPngBase64(),
+        ]),
+    ]);
+
+    $adapter = app(NetbankFundingProviderAdapter::class);
+    $request = new FundingInstructionRequestData(
+        provider: 'netbank',
+        fundingReference: 'FND-01K123456789',
+        amountMinor: 25_000,
+        currency: 'php',
+        accountReference: 'account-123',
+        expiresAt: new DateTimeImmutable('2026-07-23T10:00:00+08:00'),
+    );
+
+    expect($adapter)->toBeInstanceOf(DirectQrFundingInstructionIssuer::class);
+    $instructions = $adapter->createDirectQrFundingInstructions($request);
+
+    expect($instructions->providerReference)->toMatch('/\A91500\d{16}\z/')
+        ->and($instructions->amountMinor)->toBe(25_000)
+        ->and($instructions->currency)->toBe('PHP')
+        ->and($instructions->qrCode?->base64Payload)->toBe(validPngBase64())
+        ->and($instructions->displayData['address_registration'])->toBe('not-requested');
+
+    Http::assertSentCount(2);
 });
 
 it('creates deterministic exact one-time VCA funding instructions', function () {
@@ -538,6 +658,37 @@ it('verifies a settled incoming credit from authoritative VCA history', function
         && $request->data()['limit'] === 100);
 });
 
+it('checks the destination account history only when the caller permits fallback', function () {
+    $transaction = netbankTransaction();
+    $transaction['destination_account']['account_alias'] = '991100001234';
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/915001234567890123456/transactions*' => Http::response(['transactions' => []]),
+        'https://api.netbank.test/v1/vca/991100001234/transactions*' => Http::response(['transactions' => [$transaction]]),
+    ]);
+    $verification = verification();
+    $verification->destination = dedicatedDestination();
+    $verification->allowDestinationHistoryFallback = true;
+
+    $observation = app(NetbankFundingProviderAdapter::class)->verifyFunding($verification);
+
+    expect($observation->verificationSource)->toBe('netbank-corporate-account-transaction-history')
+        ->and($observation->metadata['verification_path'])->toBe('corporate_account');
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/v1/vca/991100001234/transactions'));
+});
+
+it('does not check destination account history when fallback is disabled', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/915001234567890123456/transactions*' => Http::response(['transactions' => []]),
+    ]);
+    $verification = verification();
+    $verification->destination = dedicatedDestination();
+
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->verifyFunding($verification))->toThrow(ProviderFundingNotObserved::class);
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/v1/vca/991100001234/transactions'));
+});
+
 it('derives a QR Ph payer mobile from the NetBank source account', function () {
     $transaction = netbankTransaction();
     $transaction['sender_name'] = 'Francesca Gabrielle Hurtado';
@@ -590,6 +741,8 @@ it('reports every incoming payment with provider-reported payer fields without g
     $payments = app(NetbankFundingProviderAdapter::class)->incomingPayments(verification());
 
     expect($payments)->toHaveCount(2)
+        ->and(app(NetbankFundingProviderAdapter::class))->toBeInstanceOf(IncomingPaymentReader::class)
+        ->and($payments[0])->toBeInstanceOf(IncomingPaymentData::class)
         ->and($payments[0]->transactionId)->toBe('credit-1')
         ->and($payments[0]->payerName)->toBe('Apple Hurtado')
         ->and($payments[0]->payerAccountNumber)->toBe('09175180722')

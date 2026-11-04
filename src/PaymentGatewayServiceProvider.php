@@ -8,24 +8,38 @@ use Illuminate\Support\ServiceProvider;
 use LBHurtado\EmiCore\Contracts\DeploymentConnectionContributor;
 use LBHurtado\EmiCore\Contracts\DeploymentEnvironmentContributor;
 use LBHurtado\MoneyIssuer\Support\BankRegistry;
+use LBHurtado\PaymentGateway\Adapters\NetbankPayoutProvider;
 use LBHurtado\PaymentGateway\Configuration\NetbankDeploymentContributor;
 use LBHurtado\PaymentGateway\Console\Commands\CheckBalanceCommand;
 use LBHurtado\PaymentGateway\Console\Commands\GenerateQrCommand;
 use LBHurtado\PaymentGateway\Console\Commands\TestDisbursementCommand;
 use LBHurtado\PaymentGateway\Console\Commands\TestGCashMemoCommand;
 use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
+use LBHurtado\PaymentGateway\Contracts\WalletProxy;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
+use LBHurtado\PaymentGateway\Funding\NetbankReusableFundingAddressProvider;
 use LBHurtado\PaymentGateway\Gateways\Netbank\NetbankPaymentGateway;
 use LBHurtado\PaymentGateway\Gateways\Omnipay\OmnipayPaymentGateway;
+use LBHurtado\PaymentGateway\Support\CoreWalletProxy;
+use LBHurtado\PaymentGateway\Support\NetbankPayerMobileInterpreter;
 use LBHurtado\PaymentGateway\Support\NetbankProviderBalanceReader;
 use LBHurtado\PaymentGateway\Support\NetbankProviderLivePreflightProbe;
+use LBHurtado\PaymentGateway\Support\NetbankProviderStatementReader;
+use LBHurtado\PaymentGateway\Support\NetbankProvisioningGatewayFactory;
+use LBHurtado\PaymentGateway\Support\NetbankProvisioningProfile;
 use LBHurtado\PaymentGateway\Support\NetbankSettlementProvider;
+use LBHurtado\PaymentGateway\Support\NetbankSettlementRailConfiguration;
+use LBHurtado\PaymentGateway\Support\NetbankSourceAccountReadiness;
 use LBHurtado\Wallet\Services\SystemUserResolverService;
 
 class PaymentGatewayServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bindIf(WalletProxy::class, CoreWalletProxy::class);
+        if (! config()->has('emi.payout_providers.netbank')) {
+            config()->set('emi.payout_providers.netbank', NetbankPayoutProvider::class);
+        }
         $this->app->singleton(BankRegistry::class, fn () => new BankRegistry);
         $this->app->singleton(NetbankDeploymentContributor::class);
         $this->app->tag(NetbankDeploymentContributor::class, [
@@ -51,6 +65,17 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         $this->app->singleton(SystemUserResolverService::class, fn () => new SystemUserResolverService);
         $this->app->singleton(NetbankFundingProviderAdapter::class);
         $this->app->tag(NetbankFundingProviderAdapter::class, 'emi.funding-provider-adapters');
+        $this->app->tag(NetbankFundingProviderAdapter::class, 'emi.funding-destination-resolvers');
+        $this->app->singleton(NetbankReusableFundingAddressProvider::class);
+        $this->app->booting(function ($app): void {
+            foreach ($app->tagged('emi.standing-funding-address-providers') as $provider) {
+                if ($provider instanceof NetbankReusableFundingAddressProvider) {
+                    return;
+                }
+            }
+
+            $app->tag(NetbankReusableFundingAddressProvider::class, 'emi.standing-funding-address-providers');
+        });
         $this->app->singleton(NetbankSettlementProvider::class);
         $this->app->tag(NetbankSettlementProvider::class, [
             'emi.settlement-providers',
@@ -61,6 +86,18 @@ class PaymentGatewayServiceProvider extends ServiceProvider
             NetbankProviderBalanceReader::class,
             'emi.provider-balance-readers',
         );
+        $this->app->singleton(NetbankProviderStatementReader::class);
+        $this->app->tag(NetbankProviderStatementReader::class, 'emi.provider-statement-readers');
+        $this->app->singleton(NetbankSourceAccountReadiness::class);
+        $this->app->tag(NetbankSourceAccountReadiness::class, 'emi.provider-source-account-readiness');
+        $this->app->singleton(NetbankPayerMobileInterpreter::class);
+        $this->app->tag(NetbankPayerMobileInterpreter::class, 'emi.provider-payer-mobile-interpreters');
+        $this->app->singleton(NetbankProvisioningProfile::class);
+        $this->app->tag(NetbankProvisioningProfile::class, 'emi.provider-provisioning-profiles');
+        $this->app->singleton(NetbankProvisioningGatewayFactory::class);
+        $this->app->tag(NetbankProvisioningGatewayFactory::class, 'emi.provider-provisioning-gateway-factories');
+        $this->app->singleton(NetbankSettlementRailConfiguration::class);
+        $this->app->tag(NetbankSettlementRailConfiguration::class, 'emi.provider-settlement-rail-configurations');
         $this->app->singleton(NetbankProviderLivePreflightProbe::class);
         $this->app->tag(
             NetbankProviderLivePreflightProbe::class,

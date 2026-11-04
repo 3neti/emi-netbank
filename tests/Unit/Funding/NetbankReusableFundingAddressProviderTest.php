@@ -7,9 +7,11 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use LBHurtado\EmiCore\Contracts\StandingFundingAddressProvider;
 use LBHurtado\EmiCore\Data\Funding\FundingQrMerchantData;
+use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressProfileRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingAddressRequestData;
 use LBHurtado\EmiCore\Data\Funding\StandingFundingObservationRequestData;
 use LBHurtado\EmiCore\Enums\FundingAddressPurpose;
+use LBHurtado\EmiCore\Models\ProviderFundingObservation;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingRequestFailed;
 use LBHurtado\PaymentGateway\Funding\NetbankReusableFundingAddressProvider;
@@ -41,6 +43,27 @@ beforeEach(function () {
         'timeout_seconds' => 10,
         'verification_lookback_days' => 7,
     ]);
+});
+
+it('describes verified mobile routing through the core profile capability', function (): void {
+    $provider = app(NetbankReusableFundingAddressProvider::class);
+    $ready = $provider->inspectStandingFundingAddressProfile(new StandingFundingAddressProfileRequestData('+63 917 301 1987', true));
+    $unverified = $provider->inspectStandingFundingAddressProfile(new StandingFundingAddressProfileRequestData('+63 917 301 1987', false));
+    $legacy = $provider->inspectStandingFundingAddressProfile(new StandingFundingAddressProfileRequestData(null, false, '123', null));
+
+    expect($ready->ready)->toBeTrue()->and($ready->routingReference)->toBe('09173011987')
+        ->and($ready->requiresVerifiedMobile)->toBeTrue()
+        ->and($unverified->ready)->toBeFalse()->and($unverified->routingReference)->toBeNull()
+        ->and($legacy->status)->toBe('legacy_address_requires_retirement');
+});
+
+it('checks HMAC readiness without requiring mobile routing', function (): void {
+    config()->set('payment-gateway.netbank.funding.standing_address.scheme', 'netbank-account-hmac-v2');
+    $provider = app(NetbankReusableFundingAddressProvider::class);
+    $routingOnly = $provider->inspectStandingFundingAddressProfile(new StandingFundingAddressProfileRequestData(null, false, validateReadiness: false));
+    expect($routingOnly->requiresVerifiedMobile)->toBeFalse()->and($routingOnly->routingReference)->toBeNull();
+    expect(fn () => $provider->inspectStandingFundingAddressProfile(new StandingFundingAddressProfileRequestData(null, false)))
+        ->toThrow(NetbankFundingConfigurationException::class);
 });
 
 it('creates a stable open-amount static NetBank QR without registering or limiting a VCA', function () {
@@ -185,6 +208,23 @@ it('rejects invalid merchant metadata before calling NetBank', function () {
     Http::assertNothingSent();
 });
 
+it('recognizes only the supported historic incoming-credit correction', function (): void {
+    $original = (new ProviderFundingObservation)->forceFill([
+        'provider_code' => 'netbank', 'gross_amount_minor' => 2500,
+        'fee_amount_minor' => 2500, 'net_amount_minor' => 0,
+    ]);
+    $corrected = (new ProviderFundingObservation)->forceFill([
+        'provider_code' => 'netbank', 'gross_amount_minor' => 2500,
+        'fee_amount_minor' => 0, 'net_amount_minor' => 2500,
+        'metadata' => ['normalization_version' => 'netbank-standing-credit-v2', 'incoming_credit_amount_is_net_received' => true],
+    ]);
+    $provider = app(NetbankReusableFundingAddressProvider::class);
+
+    expect($provider->correctionVersion($original, $corrected))->toBe('netbank-standing-credit-v2');
+    $corrected->provider_code = 'other';
+    expect($provider->correctionVersion($original, $corrected))->toBeNull();
+});
+
 it('implements the provider-neutral standing address contract with purpose-separated addresses', function () {
     useHmacStandingAddressScheme();
 
@@ -222,6 +262,7 @@ it('implements the provider-neutral standing address contract with purpose-separ
         ->and($accountFunding->fundingAddress)->not->toBe($payment->fundingAddress)
         ->and($accountFunding->fundingAddress)->not->toBe($collisionRetry->fundingAddress)
         ->and($accountFundingAgain->fundingAddress)->toBe($accountFunding->fundingAddress)
+        ->and($accountFunding->supportsCollisionRetry)->toBeTrue()
         ->and($accountFunding->displayData['derivation_scheme'])->toBe('netbank-account-hmac-v2')
         ->and($accountFunding->displayData['derivation_key_id'])->toBe('v2-test')
         ->and($accountFunding->displayData['derivation_counter'])->toBe(0)

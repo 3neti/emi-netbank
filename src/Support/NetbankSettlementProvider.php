@@ -30,6 +30,7 @@ final class NetbankSettlementProvider implements ProviderReadinessProbe, Settlem
             capabilities: [
                 ProviderCapability::ReadinessProbe,
                 ProviderCapability::BalanceRead,
+                ProviderCapability::StatementRead,
                 ProviderCapability::FundingEvidenceRead,
                 ProviderCapability::FundingInstructionIssue,
                 ProviderCapability::StandingFundingAddress,
@@ -90,6 +91,12 @@ final class NetbankSettlementProvider implements ProviderReadinessProbe, Settlem
                 'client_secret',
                 'corporate_account_number',
                 'balance_endpoint',
+            ],
+            ProviderCapability::StatementRead => [
+                'client_id',
+                'client_secret',
+                'corporate_account_number',
+                'account_transactions_endpoint',
             ],
             ProviderCapability::FundingEvidenceRead => [
                 'client_id',
