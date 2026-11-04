@@ -156,13 +156,16 @@ class NetbankProvisioningGateway implements ProviderProvisioningGateway
     /** @return array<string, mixed>|null */
     protected function sourceAccountReadiness(): ?array
     {
-        $sources = collect(app()->tagged('emi.provider-source-account-readiness'))
-            ->filter(fn (mixed $candidate): bool => $candidate instanceof ProviderSourceAccountReadiness && $candidate->providerCode() === 'netbank')
-            ->uniqueStrict();
-        if ($this->source === null && $sources->count() > 1) {
-            throw new RuntimeException('Multiple source account readiness providers are registered.');
+        $source = $this->source;
+        if ($source === null) {
+            $sources = collect(app()->tagged('emi.provider-source-account-readiness'))
+                ->filter(fn (mixed $candidate): bool => $candidate instanceof ProviderSourceAccountReadiness && $candidate->providerCode() === 'netbank')
+                ->uniqueStrict();
+            if ($sources->count() > 1) {
+                throw new RuntimeException('Multiple source account readiness providers are registered.');
+            }
+            $source = $sources->first();
         }
-        $source = $this->source ?? $sources->first();
         if ($source === null) {
             return (bool) config('x-change.provider_runtime.providers.netbank.source_account_readiness.enabled', false)
                 ? ['ready' => false, 'checked' => false, 'message' => 'No provider source-account readiness capability is available.']
