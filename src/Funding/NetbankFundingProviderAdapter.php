@@ -13,6 +13,7 @@ use LBHurtado\EmiCore\Contracts\OnDemandFundingInstructionProvider;
 use LBHurtado\EmiCore\Contracts\ProviderFundingDestinationConfigurator;
 use LBHurtado\EmiCore\Contracts\ProviderFundingDestinationResolver;
 use LBHurtado\EmiCore\Contracts\ProviderFundingHistoryRequestFactory;
+use LBHurtado\EmiCore\Contracts\SpecificIncomingPaymentVerifier;
 use LBHurtado\EmiCore\Data\Funding\FundingDestinationData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionRequestData;
 use LBHurtado\EmiCore\Data\Funding\FundingInstructionsData;
@@ -32,7 +33,7 @@ use LBHurtado\PaymentGateway\Exceptions\NetbankFundingAmbiguous;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingNotVerified;
 
-class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer, FundingProviderAdapter, IncomingPaymentReader, OnDemandFundingInstructionProvider, ProviderFundingDestinationConfigurator, ProviderFundingDestinationResolver, ProviderFundingHistoryRequestFactory
+class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer, FundingProviderAdapter, IncomingPaymentReader, OnDemandFundingInstructionProvider, ProviderFundingDestinationConfigurator, ProviderFundingDestinationResolver, ProviderFundingHistoryRequestFactory, SpecificIncomingPaymentVerifier
 {
     private const Provider = 'netbank';
 
@@ -324,7 +325,17 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
         }
     }
 
-    private function verifyFundingFromAddress(FundingVerificationData $verification): ProviderFundingObservationData
+    public function verifyIncomingPayment(FundingVerificationData $verification, string $providerTransactionId): ProviderFundingObservationData
+    {
+        $providerTransactionId = trim($providerTransactionId);
+        if ($providerTransactionId === '') {
+            throw new InvalidArgumentException('A provider transaction ID is required.');
+        }
+
+        return $this->verifyFundingFromAddress($verification, $providerTransactionId);
+    }
+
+    private function verifyFundingFromAddress(FundingVerificationData $verification, ?string $providerTransactionId = null): ProviderFundingObservationData
     {
         $this->assertProvider($verification->provider);
         $this->assertPositiveAmount($verification->expectedAmountMinor);
@@ -337,7 +348,9 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
         }
 
         $incoming = array_values(array_filter(
-            $this->client->transactions($vcaNumber, $routing['account_number']),
+            $providerTransactionId === null
+                ? $this->client->transactions($vcaNumber, $routing['account_number'])
+                : iterator_to_array($this->client->allTransactions($vcaNumber, $routing['account_number'])),
             fn (array $transaction): bool => $this->isIncomingCredit($transaction, $vcaNumber),
         ));
         $incoming = array_values(array_filter(
@@ -348,8 +361,16 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
             ),
         ));
 
+        if ($providerTransactionId !== null) {
+            $incoming = array_values(array_filter($incoming, fn (array $transaction): bool => (string) data_get($transaction, 'transaction_id') === $providerTransactionId));
+        }
+
         if ($incoming === []) {
             throw NetbankFundingNotVerified::noIncomingTransaction();
+        }
+
+        if ($providerTransactionId !== null && count($incoming) !== 1) {
+            throw NetbankFundingAmbiguous::multipleTransactions();
         }
 
         $exact = array_values(array_filter(
