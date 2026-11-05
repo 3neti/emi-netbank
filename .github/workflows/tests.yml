@@ -27,6 +27,8 @@ jobs:
           extensions: sqlite3
       - name: Install matrix dependencies
         run: |
+          composer config repositories.emi-core-vcs vcs https://github.com/3neti/emi-core.git
+          composer require --no-update '3neti/emi-core:dev-codex/payment-reliability-transactions#8e22810551e0fc70279a0f6839b1c37e1e6788bb as 2.1.0'
           composer require --dev \
             laravel/framework:${{ matrix.laravel }} \
             orchestra/testbench:${{ matrix.testbench }} \
@@ -34,7 +36,6 @@ jobs:
             pestphp/pest-plugin-laravel:${{ matrix.pest_plugin }} \
             --with-all-dependencies --no-interaction --no-progress
           composer require \
-            3neti/emi-core:${{ matrix.emi_core }} \
             3neti/wallet:${{ matrix.wallet }} \
             --with-all-dependencies --no-interaction --no-progress
       - run: composer validate --strict
