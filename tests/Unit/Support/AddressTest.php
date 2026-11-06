@@ -4,37 +4,46 @@ use Illuminate\Support\Facades\File;
 use LBHurtado\PaymentGateway\Support\Address;
 
 it('generates a valid address', function () {
-    // Arrange: Mock the zip_codes_list.json file
-    $json_file = 'zip_codes_list.json';
-    $mocked_json_path = documents_path($json_file);
-
-    $mocked_zip_codes = [
-        '1000' => 'Metro Manila',
-        '1001' => 'Santa Cruz',
-        '1010' => 'Pandacan',
-    ];
-
-    // Simulate the file content
-    File::shouldReceive('get')
-        ->with($mocked_json_path)
-        ->andReturn(json_encode($mocked_zip_codes));
-
-    // Act: Generate a new address
     $address = Address::generate();
 
-    // Assert: Validate the output
-    expect($address)->toBeArray();
-    expect(array_keys($address))->toMatchArray(['address1', 'city', 'country', 'postal_code']);
-
-    // Assert: Check specific keys are not empty
-    expect($address['address1'])->not->toBeEmpty();
-    expect($address['city'])->not->toBeEmpty();
-    expect($address['country'])->toBe('PH');
-    expect($address['postal_code'])->not->toBeEmpty();
-
-    //    // Assert: Check postal code exists in mocked data
-    //    $postal_code_key = substr($address['postal_code'], 0, 2) . '00';
-    //    dd($mocked_zip_codes, $postal_code_key);
-    //    expect(isset($mocked_zip_codes[$postal_code_key]))
-    //        ->toBeTrue();
+    expect(array_keys($address))->toMatchArray(['address1', 'city', 'country', 'postal_code'])
+        ->and($address['address1'])->not->toBeEmpty()
+        ->and($address['city'])->not->toBeEmpty()
+        ->and($address['country'])->toBe('PH')
+        ->and($address['postal_code'])->not->toBeEmpty();
 });
+
+it('keeps generated address lines within the provider limit', function (string|array $localities) {
+    $postalCodes = [];
+    for ($prefix = 10; $prefix <= 90; $prefix++) {
+        $postalCodes[$prefix.'00'] = 'Test City';
+        for ($suffix = 1; $suffix <= 5; $suffix++) {
+            $postalCodes[$prefix.'0'.$suffix] = $localities;
+        }
+    }
+
+    File::shouldReceive('get')
+        ->with(documents_path('zip_codes_list.json'))
+        ->andReturn(json_encode($postalCodes));
+
+    $address = Address::generate();
+    $original = is_array($localities) ? implode(' ', $localities) : $localities;
+
+    expect($address['address1'])->not->toBeEmpty()
+        ->and(mb_strlen($address['address1']))->toBeLessThanOrEqual(128)
+        ->and(mb_check_encoding($address['address1'], 'UTF-8'))->toBeTrue()
+        ->and(str_starts_with($original, $address['address1']))->toBeTrue()
+        ->and($address['city'])->toBe('Test City')
+        ->and($address['country'])->toBe('PH')
+        ->and($address['postal_code'])->toMatch('/^[1-9][0-9]0[1-5]$/');
+
+    if (mb_strlen($original) <= 128) {
+        expect($address['address1'])->toBe($original);
+    }
+})->with([
+    'postal code 1101' => [json_decode(file_get_contents(__DIR__.'/../../../resources/documents/zip_codes_list.json'), true)['1101']],
+    'postal code 1105' => [json_decode(file_get_contents(__DIR__.'/../../../resources/documents/zip_codes_list.json'), true)['1105']],
+    'exactly 128 characters' => [str_repeat('A', 128)],
+    'short address' => ['Santa Cruz'],
+    'multibyte address' => [str_repeat('ñ', 140)],
+]);
