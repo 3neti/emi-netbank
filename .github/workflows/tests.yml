@@ -17,8 +17,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { php: '8.3', laravel: '^12.0', testbench: '^10.3', pest: '^3.8', pest_plugin: '^3.2', emi_core: '^2.1.0', wallet: '^2.0@beta' }
-          - { php: '8.4', laravel: '^13.0', testbench: '^11.0', pest: '^4.0', pest_plugin: '^4.0', emi_core: '^2.1.0', wallet: '^2.0@beta' }
+          - { php: '8.3', laravel: '^12.0', testbench: '^10.3', pest: '^3.8', pest_plugin: '^3.2', emi_core: '^2.2.0', wallet: '^2.0@beta' }
+          - { php: '8.4', laravel: '^13.0', testbench: '^11.0', pest: '^4.0', pest_plugin: '^4.0', emi_core: '^2.2.0', wallet: '^2.0@beta' }
     name: PHP ${{ matrix.php }} · Laravel ${{ matrix.laravel }}
     steps:
       - uses: actions/checkout@v6
@@ -29,8 +29,6 @@ jobs:
           extensions: sqlite3
       - name: Install matrix dependencies
         run: |
-          composer config repositories.emi-core-vcs vcs https://github.com/3neti/emi-core.git
-          composer require --no-update '3neti/emi-core:dev-codex/payment-reliability-transactions as 2.1.0'
           composer require --dev \
             laravel/framework:${{ matrix.laravel }} \
             orchestra/testbench:${{ matrix.testbench }} \
@@ -40,7 +38,6 @@ jobs:
           composer require \
             3neti/wallet:${{ matrix.wallet }} \
             --with-all-dependencies --no-interaction --no-progress
-          php -r '$lock=json_decode(file_get_contents("composer.lock"), true, flags: JSON_THROW_ON_ERROR); foreach (array_merge($lock["packages"], $lock["packages-dev"]) as $package) { if ($package["name"] === "3neti/emi-core") { exit(($package["source"]["reference"] ?? "") === "8e22810551e0fc70279a0f6839b1c37e1e6788bb" ? 0 : 1); } } exit(1);'
       - run: composer validate --strict
       - run: vendor/bin/pint --test
       - run: composer test
