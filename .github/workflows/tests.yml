@@ -11,12 +11,14 @@ permissions:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    env:
+      COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.GITHUB_TOKEN }}"}}'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { php: '8.3', laravel: '^12.0', testbench: '^10.3', pest: '^3.8', pest_plugin: '^3.2', emi_core: '^2.1.0', wallet: '^2.0@beta' }
-          - { php: '8.4', laravel: '^13.0', testbench: '^11.0', pest: '^4.0', pest_plugin: '^4.0', emi_core: '^2.1.0', wallet: '^2.0@beta' }
+          - { php: '8.3', laravel: '^12.0', testbench: '^10.3', pest: '^3.8', pest_plugin: '^3.2', emi_core: '^2.2.0', wallet: '^2.0@beta' }
+          - { php: '8.4', laravel: '^13.0', testbench: '^11.0', pest: '^4.0', pest_plugin: '^4.0', emi_core: '^2.2.0', wallet: '^2.0@beta' }
     name: PHP ${{ matrix.php }} · Laravel ${{ matrix.laravel }}
     steps:
       - uses: actions/checkout@v6
@@ -34,7 +36,6 @@ jobs:
             pestphp/pest-plugin-laravel:${{ matrix.pest_plugin }} \
             --with-all-dependencies --no-interaction --no-progress
           composer require \
-            3neti/emi-core:${{ matrix.emi_core }} \
             3neti/wallet:${{ matrix.wallet }} \
             --with-all-dependencies --no-interaction --no-progress
       - run: composer validate --strict

@@ -963,6 +963,48 @@ it('does not mark a pending provider observation as settled', function () {
         ->and($observation->settledAt)->toBeNull();
 });
 
+it('independently verifies one exact provider transaction among multiple credits', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [netbankTransaction(transactionId: 'credit-1'), netbankTransaction(transactionId: 'credit-2')],
+        ]),
+    ]);
+    $provider = app(NetbankFundingProviderAdapter::class);
+    $first = $provider->verifyIncomingPayment(verification(), 'credit-1');
+    $second = $provider->verifyIncomingPayment(verification(), 'credit-2');
+    expect($first->providerTransactionId)->toBe('credit-1')
+        ->and($second->providerTransactionId)->toBe('credit-2')
+        ->and($first->metadata['destination_verified'])->toBeTrue();
+    expect(fn () => $provider->verifyIncomingPayment(verification(), 'not-present'))
+        ->toThrow(NetbankFundingNotVerified::class);
+});
+
+it('rejects duplicate provider entries for the same requested transaction', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [netbankTransaction(transactionId: 'duplicate'), netbankTransaction(transactionId: 'duplicate', amountMinor: 1_000)],
+        ]),
+    ]);
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->verifyIncomingPayment(verification(), 'duplicate'))
+        ->toThrow(NetbankFundingAmbiguous::class);
+});
+
+it('does not verify a requested transaction outside the observation window', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [netbankTransaction(transactionId: 'outside', occurredAt: '2026-07-27T02:45:00.000Z')],
+        ]),
+    ]);
+    $verification = verification();
+    $verification->observedAfter = new DateTimeImmutable('2026-07-27T03:00:00+00:00');
+    $verification->observedBefore = new DateTimeImmutable('2026-07-27T03:10:00+00:00');
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->verifyIncomingPayment($verification, 'outside'))
+        ->toThrow(NetbankFundingNotVerified::class);
+});
+
 it('fails closed when an incoming credit cannot be selected safely', function (
     array $transactions,
     string $exception,
