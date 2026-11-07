@@ -3,7 +3,9 @@
 namespace LBHurtado\PaymentGateway\Adapters;
 
 use Illuminate\Support\Str;
+use LBHurtado\EmiCore\Contracts\PayoutIdentityRequirementsProvider;
 use LBHurtado\EmiCore\Contracts\PayoutProvider;
+use LBHurtado\EmiCore\Data\PayoutIdentityRequirementsData;
 use LBHurtado\EmiCore\Data\PayoutRequestData;
 use LBHurtado\EmiCore\Data\PayoutResultData;
 use LBHurtado\EmiCore\Enums\PayoutStatus;
@@ -16,12 +18,19 @@ use LBHurtado\PaymentGateway\Data\Disburse\DisburseInputData;
  * Adapter that bridges emi-core's PayoutProvider contract
  * to the existing PaymentGatewayInterface implementation.
  */
-class NetbankPayoutProvider implements PayoutProvider
+class NetbankPayoutProvider implements PayoutIdentityRequirementsProvider, PayoutProvider
 {
     public function __construct(
         protected PaymentGatewayInterface $gateway,
         protected WalletProxy $walletProxy,
     ) {}
+
+    public function payoutIdentityRequirements(string $rail): PayoutIdentityRequirementsData
+    {
+        SettlementRail::from($rail);
+
+        return new PayoutIdentityRequirementsData(['address1', 'city', 'country', 'postal_code'], 128);
+    }
 
     public function disburse(PayoutRequestData $request): PayoutResultData
     {
@@ -35,6 +44,8 @@ class NetbankPayoutProvider implements PayoutProvider
             'reference_code' => $request->external_code,
             'user_id' => $request->user_id,
             'mobile' => $request->mobile,
+            ...($request->sender === null ? [] : ['sender' => $request->sender->toArray()]),
+            ...($request->recipient === null ? [] : ['recipient' => $request->recipient->toArray()]),
         ]);
 
         $response = $this->gateway->disburse($this->walletProxy->resolve(), $input);

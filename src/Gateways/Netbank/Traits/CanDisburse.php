@@ -43,7 +43,7 @@ trait CanDisburse
 
             // Build and log request payload
             $payload = DisbursePayloadData::fromValidated($data)->toArray();
-            Log::info('[Netbank] Disburse payload prepared', $payload);
+            Log::info('[Netbank] Disburse payload prepared', ['reference' => $payload['reference_id'] ?? null]);
 
             // Send to bank
             $response = Http::withHeaders([

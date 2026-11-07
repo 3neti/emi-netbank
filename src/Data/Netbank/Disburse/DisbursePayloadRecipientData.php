@@ -12,9 +12,10 @@ class DisbursePayloadRecipientData extends Data
 
     public function __construct(
         #[MapInputName('account_number')]
-        public string $name
+        public string $name,
+        ?array $resolvedAddress = null,
     ) {
-        $this->address = Address::generate();
+        $this->address = $resolvedAddress ?? Address::generate();
     }
 
 }
