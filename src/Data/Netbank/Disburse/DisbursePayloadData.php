@@ -4,6 +4,7 @@ namespace LBHurtado\PaymentGateway\Data\Netbank\Disburse;
 
 use Illuminate\Support\Arr;
 use LBHurtado\PaymentGateway\Data\Netbank\Common\PayloadAmountData;
+use LBHurtado\PaymentGateway\Support\ResolvedPayoutParty;
 use Spatie\LaravelData\Attributes\MapInputName;
 use Spatie\LaravelData\Data;
 
@@ -23,14 +24,22 @@ class DisbursePayloadData extends Data
 
     public static function fromValidated(array $validated): self
     {
+        $sender = Arr::get($validated, 'sender');
+        $recipient = Arr::get($validated, 'recipient');
+
         return new DisbursePayloadData(
             reference_id: Arr::get($validated, 'reference'),
             settlement_rail: Arr::get($validated, 'via'),
             amount: PayloadAmountData::from($validated),
             source_account_number: config('disbursement.source.account_number'),
-            sender: config('disbursement.source.sender'),
+            sender: is_array($sender) ? [
+                'name' => $sender['name'] ?? config('app.name', 'System'),
+                'address' => ResolvedPayoutParty::address($sender),
+            ] : config('disbursement.source.sender'),
             destination_account: DisbursePayloadDestinationAccountData::from($validated),
-            recipient: DisbursePayloadRecipientData::from($validated),
+            recipient: is_array($recipient)
+                ? new DisbursePayloadRecipientData($recipient['name'] ?? $validated['account_number'], ResolvedPayoutParty::address($recipient))
+                : DisbursePayloadRecipientData::from($validated),
         );
     }
 }

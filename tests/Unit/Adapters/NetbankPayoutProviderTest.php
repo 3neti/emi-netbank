@@ -3,12 +3,50 @@
 declare(strict_types=1);
 
 use Bavix\Wallet\Models\Wallet;
+use LBHurtado\EmiCore\Contracts\PayoutIdentityRequirementsProvider;
+use LBHurtado\EmiCore\Data\PayoutAddressData;
+use LBHurtado\EmiCore\Data\PayoutPartyData;
 use LBHurtado\EmiCore\Data\PayoutRequestData;
 use LBHurtado\EmiCore\Enums\PayoutStatus;
 use LBHurtado\PaymentGateway\Adapters\NetbankPayoutProvider;
 use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
 use LBHurtado\PaymentGateway\Contracts\WalletProxy;
 use LBHurtado\PaymentGateway\Data\Disburse\DisburseInputData;
+
+it('advertises NetBank payout address requirements as an optional capability', function (): void {
+    $provider = new NetbankPayoutProvider(Mockery::mock(PaymentGatewayInterface::class), Mockery::mock(WalletProxy::class));
+    expect($provider)->toBeInstanceOf(PayoutIdentityRequirementsProvider::class)
+        ->and($provider->payoutIdentityRequirements('INSTAPAY')->address1_max_length)->toBe(128)
+        ->and($provider->payoutIdentityRequirements('INSTAPAY')->required_address_fields)->toBe(['address1', 'city', 'country', 'postal_code']);
+});
+
+it('passes both resolved parties through the payout adapter', function (): void {
+    $wallet = Mockery::mock(Wallet::class);
+    $wallets = Mockery::mock(WalletProxy::class);
+    $wallets->shouldReceive('resolve')->once()->andReturn($wallet);
+    $gateway = Mockery::mock(PaymentGatewayInterface::class);
+    $gateway->shouldReceive('disburse')->once()->with($wallet, Mockery::on(function (DisburseInputData $data): bool {
+        return data_get($data->toArray(), 'sender.address.address1') === 'Issuer locality'
+            && data_get($data->toArray(), 'recipient.address.address1') === 'Recipient locality';
+    }))->andReturnFalse();
+    $provider = new NetbankPayoutProvider($gateway, $wallets);
+    $provider->disburse(new PayoutRequestData(
+        'ref-1', 100, '09170000000', 'GXCHPHM2XXX', 'INSTAPAY',
+        sender: new PayoutPartyData('sender', 'Issuer', new PayoutAddressData('Issuer locality', 'Manila', 'PH', '1000', 'configured')),
+        recipient: new PayoutPartyData('recipient', 'Recipient', new PayoutAddressData('Recipient locality', 'Cebu City', 'PH', '6000', 'ip_assisted_synthetic')),
+    ));
+});
+
+it('omits party identity from the legacy gateway audit payload', function (): void {
+    $data = DisburseInputData::from([
+        'reference' => 'ref-audit', 'amount' => 100, 'account_number' => '09170000000',
+        'bank' => 'GXCHPHM2XXX', 'via' => 'INSTAPAY',
+        'sender' => ['role' => 'sender', 'name' => 'Private Sender', 'address' => ['address1' => 'Private Locality', 'city' => 'Manila', 'country' => 'PH', 'postal_code' => '1000', 'source' => 'synthetic']],
+    ]);
+    $audit = $data->toAuditArray();
+    expect($audit)->not->toHaveKey('sender')->not->toHaveKey('recipient')
+        ->and(json_encode($audit))->not->toContain('Private Sender')->not->toContain('Private Locality');
+});
 
 it('maps settled NetBank status to completed payout status', function () {
     $gateway = Mockery::mock(PaymentGatewayInterface::class);

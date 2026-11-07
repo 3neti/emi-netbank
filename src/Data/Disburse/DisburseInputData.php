@@ -2,7 +2,9 @@
 
 namespace LBHurtado\PaymentGateway\Data\Disburse;
 
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
+use LBHurtado\EmiCore\Data\PayoutPartyData;
 use LBHurtado\PaymentGateway\Data\SettlementBanksData;
 use Spatie\LaravelData\Data;
 
@@ -18,6 +20,8 @@ class DisburseInputData extends Data
         public ?string $reference_code = null,
         public ?int $user_id = null,
         public ?string $mobile = null,
+        public ?PayoutPartyData $sender = null,
+        public ?PayoutPartyData $recipient = null,
     ) {
         // Sanitize account number: strip all non-numeric characters
         // Handles cases like '0 917 301 1987', '0917-301-1987', '+639173011987'
@@ -33,5 +37,10 @@ class DisburseInputData extends Data
             'bank' => ['required', 'string', Rule::in(SettlementBanksData::indices())],
             'via' => ['required', 'string', 'in:'.implode(',', config('disbursement.settlement_rails', []))],
         ];
+    }
+
+    public function toAuditArray(): array
+    {
+        return Arr::except($this->toArray(), ['sender', 'recipient']);
     }
 }

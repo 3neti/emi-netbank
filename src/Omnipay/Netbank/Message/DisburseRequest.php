@@ -7,6 +7,7 @@ use LBHurtado\PaymentGateway\Enums\SettlementRail;
 use LBHurtado\PaymentGateway\Omnipay\Netbank\Traits\AppliesKycWorkaround;
 use LBHurtado\PaymentGateway\Omnipay\Netbank\Traits\HasOAuth2;
 use LBHurtado\PaymentGateway\Omnipay\Netbank\Traits\ValidatesSettlementRail;
+use LBHurtado\PaymentGateway\Support\ResolvedPayoutParty;
 use Omnipay\Common\Http\Exception\NetworkException;
 use Omnipay\Common\Http\Exception\RequestException;
 use Omnipay\Common\Message\AbstractRequest;
@@ -66,10 +67,17 @@ class DisburseRequest extends AbstractRequest
             ],
         ];
 
-        // Apply KYC workaround (inject random address to both sender and recipient)
-        // NetBank requires address for both parties
-        $this->applyKycWorkaround($payload, 'sender');
-        $this->applyKycWorkaround($payload, 'recipient');
+        foreach (['sender', 'recipient'] as $role) {
+            $party = $this->getParameter($role.'Party');
+            if (is_array($party)) {
+                $payload[$role]['address'] = ResolvedPayoutParty::address($party);
+                if (is_string($party['name'] ?? null) && trim($party['name']) !== '') {
+                    $payload[$role]['name'] = $party['name'];
+                }
+            } else {
+                $this->applyKycWorkaround($payload, $role);
+            }
+        }
 
         // Add optional remarks field (for GCash memo smoke test)
         if ($remarks = $this->getRemarks()) {
@@ -266,6 +274,16 @@ class DisburseRequest extends AbstractRequest
     public function setSenderName($value)
     {
         return $this->setParameter('senderName', $value);
+    }
+
+    public function setSenderParty($value)
+    {
+        return $this->setParameter('senderParty', $value);
+    }
+
+    public function setRecipientParty($value)
+    {
+        return $this->setParameter('recipientParty', $value);
     }
 
     // Gateway parameter access (for traits)

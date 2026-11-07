@@ -6,6 +6,7 @@ use App\Services\MerchantNameTemplateService;
 use Bavix\Wallet\Interfaces\Wallet;
 use Bavix\Wallet\Models\Transaction;
 use Brick\Money\Money;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -104,7 +105,9 @@ class OmnipayPaymentGateway implements PaymentGatewayInterface
             'gateway' => config('payment-gateway.default', 'netbank'),
             'reference_id' => $data['reference'],
             'status' => 'pending',
-            'request_payload' => $data,
+            'request_payload' => $validated instanceof DisburseInputData
+                ? $validated->toAuditArray()
+                : Arr::except($data, ['sender', 'recipient']),
             'attempted_at' => now(),
         ]);
 
@@ -138,6 +141,8 @@ class OmnipayPaymentGateway implements PaymentGatewayInterface
                 'reference' => $data['reference'],
                 'via' => $data['via'],
                 'currency' => $currency,
+                'senderParty' => $data['sender'] ?? null,
+                'recipientParty' => $data['recipient'] ?? null,
             ])->send();
 
             if (! $response->isSuccessful()) {
