@@ -141,6 +141,19 @@ class CheckBalanceTest extends TestCase
         $this->assertEquals(1250000, $response->getAvailableBalance());
     }
 
+    public function test_account_creation_date_is_not_a_balance_timestamp()
+    {
+        $request = $this->gateway->checkBalance(['accountNumber' => '1234567890']);
+        $response = new CheckBalanceResponse($request, [
+            'account_number' => '1234567890',
+            'balance' => ['cur' => 'PHP', 'num' => '28800'],
+            'created_date' => '2026-11-06T00:00:00Z',
+        ]);
+
+        $this->assertTrue($response->isSuccessful());
+        $this->assertNull($response->getAsOf());
+    }
+
     public function test_failed_check_balance_response()
     {
         $request = $this->gateway->checkBalance([

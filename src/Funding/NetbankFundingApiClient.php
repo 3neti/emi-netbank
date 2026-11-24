@@ -168,13 +168,14 @@ class NetbankFundingApiClient
                 );
             }
 
-            $asOf = $data['created_date'] ?? null;
+            $asOf = $data['as_of'] ?? null;
 
             return [
                 'balance' => $balance,
                 'available_balance' => $availableBalance,
                 'currency' => mb_strtoupper(trim($currency)),
                 'as_of' => is_string($asOf) ? $asOf : null,
+                'fetched_at' => now()->toIso8601String(),
                 'raw' => $data,
             ];
         } catch (NetbankBalanceReadException $exception) {
@@ -470,6 +471,32 @@ class NetbankFundingApiClient
 
             $offset += $requestedLimit;
         }
+    }
+
+    /** @return array<string, mixed> */
+    public function submitAccountTransfer(array $payload, string $idempotencyKey): array
+    {
+        $response = $this->api()->withHeaders(['idempotency-key' => $idempotencyKey])->post('/v1/transactions', $payload);
+        $this->assertSuccessful($response, 'submit-account-transfer');
+        $data = $response->json();
+        if (! is_array($data)) {
+            throw NetbankFundingRequestFailed::invalidResponse('submit-account-transfer');
+        }
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
+    public function accountTransferStatus(string $transactionId): array
+    {
+        $response = $this->api()->get('/v1/transactions/'.rawurlencode($transactionId));
+        $this->assertSuccessful($response, 'retrieve-account-transfer');
+        $data = $response->json();
+        if (! is_array($data)) {
+            throw NetbankFundingRequestFailed::invalidResponse('retrieve-account-transfer');
+        }
+
+        return $data;
     }
 
     private function api(): PendingRequest

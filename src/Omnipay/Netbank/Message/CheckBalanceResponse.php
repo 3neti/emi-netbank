@@ -82,11 +82,11 @@ class CheckBalanceResponse extends AbstractResponse
 
     /**
      * Get the timestamp when balance was calculated
-     * NetBank doesn't provide this, use created_date or null
+     * Account creation time is not a balance timestamp.
      */
     public function getAsOf(): ?string
     {
-        return $this->data['created_date'] ?? null;
+        return is_string($this->data['as_of'] ?? null) ? $this->data['as_of'] : null;
     }
 
     /**

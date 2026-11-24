@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace LBHurtado\PaymentGateway\Support;
 
+use Illuminate\Support\Carbon;
 use LBHurtado\EmiCore\Contracts\ProviderSourceAccountReadiness;
 use LBHurtado\EmiCore\Data\Providers\ProviderSourceAccountReadinessRequestData;
 use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
@@ -22,7 +23,16 @@ class NetbankSourceAccountReadiness implements ProviderSourceAccountReadiness
 
     public function inspectSourceAccount(ProviderSourceAccountReadinessRequestData $request): ?array
     {
-        return $request->provisioning ? $this->provisioningReadiness() : $this->handle($request->requiredAmountMinor);
+        if ($request->provisioning && $request->sourceAccountNumber === null) {
+            return $this->provisioningReadiness();
+        }
+
+        $result = $this->handle($request->requiredAmountMinor, $request->sourceAccountNumber);
+        if ($request->sourceAccountNumber !== null) {
+            unset($result['account_number']);
+        }
+
+        return $result;
     }
 
     /**
@@ -78,11 +88,17 @@ class NetbankSourceAccountReadiness implements ProviderSourceAccountReadiness
     /**
      * @return array<string, mixed>
      */
-    public function handle(?int $requiredMinor = null): array
+    public function handle(?int $requiredMinor = null, ?string $selectedAccountNumber = null): array
     {
-        $accountNumber = $this->sourceAccountNumber();
+        $accountNumber = $selectedAccountNumber === null ? $this->sourceAccountNumber() : trim($selectedAccountNumber);
+        if ($accountNumber === '') {
+            return [
+                'enabled' => true, 'ready' => false, 'checked' => false,
+                'message' => 'The selected NetBank source account is unavailable.',
+            ];
+        }
 
-        if (! $this->enabled()) {
+        if (! $this->enabled() && $selectedAccountNumber === null) {
             return [
                 'enabled' => false,
                 'ready' => true,
@@ -129,6 +145,58 @@ class NetbankSourceAccountReadiness implements ProviderSourceAccountReadiness
                 ];
             }
 
+            if ($selectedAccountNumber !== null) {
+                $availableValue = $balance['available_balance'] ?? data_get($balance, 'raw.available_balance');
+                $availableAmount = is_array($availableValue)
+                    ? ($availableValue['num'] ?? $availableValue['amount'] ?? $availableValue['value'] ?? null)
+                    : $availableValue;
+                if (! is_numeric($availableAmount) || (float) $availableAmount < 0) {
+                    return [
+                        'enabled' => true, 'ready' => false, 'checked' => true,
+                        'reason' => 'balance_unavailable', 'message' => 'The selected account available balance is unavailable.',
+                    ];
+                }
+                $asOf = $balance['as_of'] ?? null;
+                $freshnessValue = $asOf;
+                $freshnessSource = 'provider_balance_timestamp';
+                if ($asOf === null) {
+                    $raw = $balance['raw'] ?? null;
+                    $returnedAccount = is_array($raw) ? ($raw['account_number'] ?? null) : null;
+                    $returnedAvailable = is_array($raw) ? ($raw['available_balance'] ?? null) : null;
+                    $normalizeAccount = static fn (string $value): string => strtoupper((string) preg_replace('/[^a-zA-Z0-9]/', '', $value));
+                    if (! is_string($returnedAccount) || $normalizeAccount($returnedAccount) !== $normalizeAccount($accountNumber)
+                        || ! is_array($returnedAvailable) || ($returnedAvailable['cur'] ?? null) !== 'PHP'
+                        || ! is_numeric($returnedAvailable['num'] ?? null) || (float) $returnedAvailable['num'] < 0
+                        || ($balance['currency'] ?? null) !== 'PHP'
+                        || isset($balance['failure_code'])) {
+                        return [
+                            'enabled' => true, 'ready' => false, 'checked' => true,
+                            'reason' => 'balance_unavailable', 'message' => 'The bank response could not be verified for the selected account.',
+                        ];
+                    }
+                    $freshnessValue = $balance['fetched_at'] ?? null;
+                    $freshnessSource = 'authenticated_response_fetch_time';
+                }
+                try {
+                    $observedAt = is_string($freshnessValue) && trim($freshnessValue) !== '' ? Carbon::parse($freshnessValue) : null;
+                } catch (Throwable) {
+                    $observedAt = null;
+                }
+                $maxAge = max(1, (int) config('x-change.funding.provider_balance_max_age_seconds', 300));
+                if ($observedAt === null) {
+                    return [
+                        'enabled' => true, 'ready' => false, 'checked' => true,
+                        'reason' => 'balance_timestamp_unavailable', 'message' => 'The bank did not provide a balance timestamp.',
+                    ];
+                }
+                if ($observedAt->lessThan(now()->subSeconds($maxAge)) || $observedAt->greaterThan(now()->addSeconds(30))) {
+                    return [
+                        'enabled' => true, 'ready' => false, 'checked' => true,
+                        'reason' => 'balance_stale', 'message' => 'The selected account balance is not current.',
+                    ];
+                }
+            }
+
             $balanceMinor = $this->normalizeMoneyToMinor($balance['balance'] ?? data_get($balance, 'raw.balance') ?? 0);
             $availableMinor = $this->normalizeMoneyToMinor($balance['available_balance'] ?? data_get($balance, 'raw.available_balance') ?? $balanceMinor);
             $ready = $requiredMinor === null || $availableMinor >= $requiredMinor;
@@ -137,14 +205,15 @@ class NetbankSourceAccountReadiness implements ProviderSourceAccountReadiness
                 'enabled' => true,
                 'ready' => $ready,
                 'checked' => true,
-                'fetched_at' => now()->toIso8601String(),
+                'fetched_at' => $balance['fetched_at'] ?? null,
+                'freshness_source' => $selectedAccountNumber !== null ? $freshnessSource : null,
                 'account_number' => $accountNumber,
                 'account_number_masked' => $this->maskAccountNumber($accountNumber),
                 'balance_minor' => $balanceMinor,
                 'available_balance_minor' => $availableMinor,
                 'required_minor' => $requiredMinor,
                 'currency' => $this->resolveCurrency($balance),
-                'as_of' => $balance['as_of'] ?? now()->toIso8601String(),
+                'as_of' => $balance['as_of'] ?? null,
                 'message' => $this->message($ready, $requiredMinor),
             ];
         } catch (Throwable $e) {
@@ -155,7 +224,7 @@ class NetbankSourceAccountReadiness implements ProviderSourceAccountReadiness
                 'reason' => 'balance_unavailable',
                 'account_number' => $accountNumber,
                 'account_number_masked' => $this->maskAccountNumber($accountNumber),
-                'message' => $e->getMessage(),
+                'message' => $selectedAccountNumber === null ? $e->getMessage() : 'The selected NetBank source account could not be checked.',
             ];
         }
     }

@@ -192,6 +192,16 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
         $routing = $this->instructionRoutingProfile($request->destination);
         $alias = $routing['alias'];
         $reference = $this->numericReference($request->fundingReference);
+        if (array_key_exists('reserved_vca_reference', $request->metadata)) {
+            $reserved = $request->metadata['reserved_vca_reference'];
+            if ($request->destination?->mode !== 'dedicated'
+                || ! is_string($reserved)
+                || ! preg_match('/\A[0-9]{7}\z/', $reserved)
+                || ! preg_match('/\A[0-9]{5}\z/', $alias)) {
+                throw new InvalidArgumentException('A dedicated NetBank VCA requires a five-digit alias and a reserved seven-digit reference.');
+            }
+            $reference = $reserved;
+        }
         $vcaNumber = $alias.$reference;
         $issuedAt = DateTimeImmutable::createFromInterface(now());
         $expiresAt = $request->expiresAt
@@ -347,11 +357,16 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
             throw new InvalidArgumentException('A valid NetBank VCA number is required for verification.');
         }
 
+        $directQr = $verification->destination?->mode === 'dedicated'
+            && data_get($verification->destination->metadata, 'netbank_instruction_mode') === 'direct_qr';
+
         $incoming = array_values(array_filter(
-            $providerTransactionId === null
+            $providerTransactionId === null && ! $directQr
                 ? $this->client->transactions($vcaNumber, $routing['account_number'])
                 : iterator_to_array($this->client->allTransactions($vcaNumber, $routing['account_number'])),
-            fn (array $transaction): bool => $this->isIncomingCredit($transaction, $vcaNumber),
+            fn (array $transaction): bool => $this->isIncomingCredit(
+                $transaction, $vcaNumber, data_get($verification->destination?->metadata, 'require_exact_vca') === true,
+            ),
         ));
         $incoming = array_values(array_filter(
             $incoming,
@@ -369,7 +384,7 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
             throw NetbankFundingNotVerified::noIncomingTransaction();
         }
 
-        if ($providerTransactionId !== null && count($incoming) !== 1) {
+        if (($providerTransactionId !== null || $directQr) && count($incoming) !== 1) {
             throw NetbankFundingAmbiguous::multipleTransactions();
         }
 
@@ -426,6 +441,8 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
                 'type' => $this->optionalString(data_get($transaction, 'type')),
                 'settlement_rail' => $this->optionalString(data_get($transaction, 'settlement_rail')),
                 'destination_verified' => true,
+                ...(data_get($verification->destination?->metadata, 'require_exact_vca') === true
+                    ? ['exact_vca_verified' => true] : []),
                 'expected_amount_matches' => $grossAmountMinor === $verification->expectedAmountMinor,
                 'expected_currency_matches' => $transactionCurrency === $currency,
                 'normalization_version' => 'netbank-incoming-credit-v3',
@@ -512,7 +529,7 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
         $payments = [];
 
         foreach ($this->client->allTransactions($vcaNumber, $routing['account_number']) as $transaction) {
-            if (! $this->isIncomingCredit($transaction, $vcaNumber)
+            if (! $this->isIncomingCredit($transaction, $vcaNumber, data_get($verification->destination?->metadata, 'require_exact_vca') === true)
                 || ! $this->isInsideVerificationWindow($transaction, $verification)) {
                 continue;
             }
@@ -638,13 +655,14 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
         );
     }
 
-    private function isIncomingCredit(array $transaction, string $vcaNumber): bool
+    private function isIncomingCredit(array $transaction, string $vcaNumber, bool $requireExactVca = false): bool
     {
         $destinationAlias = $this->optionalString(data_get($transaction, 'destination_account.account_alias'));
 
         return strcasecmp((string) data_get($transaction, 'type'), 'Credit') === 0
             && strcasecmp((string) data_get($transaction, 'description'), 'EXTERNAL_TRANSFER_INCOMING') === 0
-            && ($destinationAlias === null || hash_equals($vcaNumber, $destinationAlias));
+            && ((! $requireExactVca && $destinationAlias === null)
+                || ($destinationAlias !== null && hash_equals($vcaNumber, $destinationAlias)));
     }
 
     private function amountMinor(array $transaction): int
@@ -683,6 +701,11 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
         $occurredAt = $this->optionalDate(data_get($transaction, 'date'));
 
         if ($occurredAt === null) {
+            if ($verification->destination?->mode === 'dedicated'
+                && data_get($verification->destination->metadata, 'netbank_instruction_mode') === 'direct_qr') {
+                throw new InvalidArgumentException('NetBank direct QR transaction date is required for monitoring.');
+            }
+
             return false;
         }
 

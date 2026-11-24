@@ -438,6 +438,7 @@ class OmnipayPaymentGateway implements PaymentGatewayInterface
                 'available_balance' => $response->getAvailableBalance(),
                 'currency' => $response->getCurrency(),
                 'as_of' => $response->getAsOf(),
+                'fetched_at' => now()->toIso8601String(),
                 'raw' => $response->getData(),
             ];
 

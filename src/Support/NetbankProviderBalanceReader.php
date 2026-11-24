@@ -70,7 +70,7 @@ final readonly class NetbankProviderBalanceReader implements ProviderBalanceRead
             );
         }
 
-        $observedAt = $this->observedAt($result['as_of'] ?? null);
+        $observedAt = $this->observedAt($result['as_of'] ?? $result['fetched_at'] ?? null);
         $evidenceReference = 'netbank-balance:'.hash('sha256', implode('|', [
             $request->connectionReference,
             $request->settlementResourceReference,

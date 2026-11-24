@@ -5,6 +5,7 @@ namespace LBHurtado\PaymentGateway\Services;
 use Bavix\Wallet\Interfaces\Wallet;
 use Bavix\Wallet\Models\Transaction;
 use Brick\Money\Money;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use LBHurtado\EmiCore\Enums\ProviderLivePreflightFailureCode;
@@ -94,6 +95,13 @@ class OmnipayBridge implements PaymentGatewayInterface
             ? $validated->toArray()
             : $validated;
 
+        if (array_key_exists('source_account', $data) && $data['source_account'] !== null
+            && (data_get($data, 'source_account.provider') !== 'netbank'
+                || blank(data_get($data, 'source_account.account_number'))
+                || blank(data_get($data, 'source_account.customer_id')))) {
+            throw new \InvalidArgumentException('The selected payout source is unavailable.');
+        }
+
         $amount = $data['amount'];
         $currency = config('disbursement.currency', 'PHP');
         $credits = Money::of($amount, $currency);
@@ -125,6 +133,10 @@ class OmnipayBridge implements PaymentGatewayInterface
                 'reference' => $data['reference'],
                 'via' => $data['via'],
                 'currency' => $currency,
+                ...(! isset($data['source_account']) ? [] : [
+                    'sourceAccountNumber' => $data['source_account']['account_number'],
+                    'senderCustomerId' => $data['source_account']['customer_id'],
+                ]),
             ])->send();
 
             if (! $response->isSuccessful()) {
@@ -144,7 +156,7 @@ class OmnipayBridge implements PaymentGatewayInterface
             $transaction->meta = [
                 'operationId' => $response->getOperationId(),
                 'user_id' => $wallet->getKey(),
-                'payload' => $data,
+                'payload' => Arr::except($data, ['source_account']),
                 'settlement_rail' => $rail->value,
                 'bank_code' => $data['bank'],
                 'is_emi' => $this->bankRegistry->isEMI($data['bank']),
@@ -347,6 +359,7 @@ class OmnipayBridge implements PaymentGatewayInterface
                 'available_balance' => $response->getAvailableBalance(),
                 'currency' => $response->getCurrency(),
                 'as_of' => $response->getAsOf(),
+                'fetched_at' => now()->toIso8601String(),
                 'raw' => $response->getData(),
             ];
 

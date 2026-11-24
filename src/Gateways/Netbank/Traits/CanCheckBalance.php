@@ -54,7 +54,7 @@ trait CanCheckBalance
             $balance = isset($data['balance']['num']) ? (int) $data['balance']['num'] : 0;
             $availableBalance = isset($data['available_balance']['num']) ? (int) $data['available_balance']['num'] : $balance;
             $currency = $data['balance']['cur'] ?? 'PHP';
-            $asOf = $data['created_date'] ?? null;
+            $asOf = $data['as_of'] ?? null;
 
             Log::info('[Netbank] Balance checked', [
                 'status' => 'success',
@@ -64,7 +64,8 @@ trait CanCheckBalance
                 'balance' => $balance,
                 'available_balance' => $availableBalance,
                 'currency' => $currency,
-                'as_of' => $asOf,
+                'as_of' => is_string($asOf) ? $asOf : null,
+                'fetched_at' => now()->toIso8601String(),
                 'raw' => $data,
             ];
 

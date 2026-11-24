@@ -8,6 +8,7 @@ use Illuminate\Support\ServiceProvider;
 use LBHurtado\EmiCore\Contracts\DeploymentConnectionContributor;
 use LBHurtado\EmiCore\Contracts\DeploymentEnvironmentContributor;
 use LBHurtado\MoneyIssuer\Support\BankRegistry;
+use LBHurtado\PaymentGateway\Adapters\NetbankAccountTransferProvider;
 use LBHurtado\PaymentGateway\Adapters\NetbankPayoutProvider;
 use LBHurtado\PaymentGateway\Configuration\NetbankDeploymentContributor;
 use LBHurtado\PaymentGateway\Console\Commands\CheckBalanceCommand;
@@ -39,6 +40,9 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         $this->app->bindIf(WalletProxy::class, CoreWalletProxy::class);
         if (! config()->has('emi.payout_providers.netbank')) {
             config()->set('emi.payout_providers.netbank', NetbankPayoutProvider::class);
+        }
+        if (config('emi.account_transfer_providers.netbank') === null) {
+            config()->set('emi.account_transfer_providers.netbank', NetbankAccountTransferProvider::class);
         }
         $this->app->singleton(BankRegistry::class, fn () => new BankRegistry);
         $this->app->singleton(NetbankDeploymentContributor::class);
