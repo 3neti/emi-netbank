@@ -218,6 +218,46 @@ it('offers direct QR instructions without registering or limiting a virtual acco
     Http::assertSentCount(2);
 });
 
+it('uses a reserved seven digit VCA for direct dedicated QR instructions without registration', function () {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token', 'expires_in' => 3600]),
+        'https://api.netbank.test/v1/qrph/generate' => Http::response(['qr_code' => validPngBase64()]),
+    ]);
+    $request = new FundingInstructionRequestData(
+        provider: 'netbank', fundingReference: 'fixture-funding', amountMinor: 2500,
+        currency: 'PHP', accountReference: 'wallet:dedicated', destination: dedicatedDestination(),
+        expiresAt: new DateTimeImmutable('2026-07-23T10:00:00+08:00'),
+        metadata: ['reserved_vca_reference' => '1234567'],
+    );
+    $result = app(NetbankFundingProviderAdapter::class)->createDirectQrFundingInstructions($request);
+    expect($result->fundingAddress)->toBe('543211234567')
+        ->and($result->providerReference)->toBe('543211234567')
+        ->and($result->displayData['address_registration'])->toBe('not-requested')
+        ->and($result->displayData['provider_enforced_one_time'])->toBeFalse()
+        ->and($result->displayData['provider_enforced_amount'])->toBeFalse()
+        ->and($result->displayData['provider_enforced_expiry'])->toBeFalse();
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.netbank.test/v1/qrph/generate'
+        && $request['destination_account'] === '543211234567');
+    Http::assertSentCount(2);
+});
+
+it('rejects invalid or shared reserved references before contacting NetBank', function (bool $dedicated, string $reference) {
+    $destination = $dedicated ? dedicatedDestination() : null;
+    $request = new FundingInstructionRequestData(
+        provider: 'netbank', fundingReference: 'fixture-funding', amountMinor: 2500,
+        currency: 'PHP', accountReference: 'wallet:dedicated', destination: $destination,
+        expiresAt: new DateTimeImmutable('2026-07-23T10:00:00+08:00'),
+        metadata: ['reserved_vca_reference' => $reference],
+    );
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->createDirectQrFundingInstructions($request))
+        ->toThrow(InvalidArgumentException::class);
+    Http::assertNothingSent();
+})->with([
+    'invalid length' => [true, '123456'],
+    'non numeric' => [true, '123456x'],
+    'shared destination' => [false, '1234567'],
+]);
+
 it('creates deterministic exact one-time VCA funding instructions', function () {
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response([
@@ -397,12 +437,13 @@ it('uses a dedicated destination without reading shared routing values', functio
         amountMinor: 50_000,
         currency: 'PHP',
         accountReference: 'wallet:dedicated',
+        metadata: ['reserved_vca_reference' => '0123456'],
         destination: dedicatedDestination(),
     );
 
     $instructions = app(NetbankFundingProviderAdapter::class)->createFundingInstructions($request);
 
-    expect($instructions->providerReference)->toStartWith('54321')
+    expect($instructions->providerReference)->toBe('543210123456')
         ->and($instructions->displayData['account_name'])->toBe('Dedicated Treasury');
 
     Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/vca/pre-transaction/register'
@@ -410,6 +451,23 @@ it('uses a dedicated destination without reading shared routing values', functio
 
     Http::assertSent(fn (Request $httpRequest): bool => $httpRequest->url() === 'https://api.netbank.test/v1/vca/create'
         && $httpRequest->data()['account_number'] === '991-0100-00123-4');
+});
+
+it('rejects malformed reserved VCA references before calling NetBank', function () {
+    Http::fake();
+    $request = new FundingInstructionRequestData(
+        provider: 'netbank',
+        fundingReference: 'FND-DEDICATED-BAD-REF',
+        amountMinor: 2_500,
+        currency: 'PHP',
+        accountReference: 'wallet:dedicated',
+        metadata: ['reserved_vca_reference' => '123456'],
+        destination: dedicatedDestination(),
+    );
+
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->createFundingInstructions($request))
+        ->toThrow(InvalidArgumentException::class);
+    Http::assertNothingSent();
 });
 
 it('generates a VCA alias token for an explicit account and alias', function () {
@@ -612,6 +670,67 @@ it('rejects webhook requests outside the transport contract', function (?string 
     'unexpected media type' => ['3.0.84.126', 'application/json', 'unexpected-content-type'],
     'missing source' => [null, 'text/plain', 'source-ip-not-allowed'],
 ]);
+
+it('refuses to choose one direct QR payment when another credit exists on a later page', function (): void {
+    Http::fake(function (Request $request) {
+        if ($request->url() === 'https://auth.netbank.test/oauth2/token') {
+            return Http::response(['access_token' => 'access-token']);
+        }
+
+        $offset = (int) ($request->data()['offset'] ?? 0);
+
+        return Http::response(['transactions' => $offset === 0
+            ? array_map(function (int $number): array {
+                $transaction = netbankTransaction(transactionId: 'transaction-'.$number);
+                if ($number !== 1) {
+                    $transaction['type'] = 'Debit';
+                }
+
+                return $transaction;
+            }, range(1, 100))
+            : [netbankTransaction(amountMinor: 1_000, transactionId: 'credit-101')]]);
+    });
+
+    $verification = verification();
+    $verification->destination = dedicatedDestination();
+    $verification->destination->metadata['netbank_instruction_mode'] = 'direct_qr';
+
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->verifyFunding($verification))
+        ->toThrow(NetbankFundingAmbiguous::class);
+});
+
+it('fails closed when a direct QR credit has no transaction date', function (): void {
+    $transaction = netbankTransaction();
+    $transaction['date'] = null;
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response(['transactions' => [$transaction]]),
+    ]);
+    $verification = verification();
+    $verification->destination = dedicatedDestination();
+    $verification->destination->metadata['netbank_instruction_mode'] = 'direct_qr';
+    $verification->observedAfter = new DateTimeImmutable('2026-07-22T00:00:00Z');
+
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->incomingPayments($verification))
+        ->toThrow(InvalidArgumentException::class, 'transaction date is required');
+    expect(fn () => app(NetbankFundingProviderAdapter::class)->verifyFunding($verification))
+        ->toThrow(InvalidArgumentException::class, 'transaction date is required');
+});
+
+it('continues to verify a single direct QR credit', function (): void {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response(['access_token' => 'access-token']),
+        'https://api.netbank.test/v1/vca/*/transactions*' => Http::response([
+            'transactions' => [netbankTransaction()],
+        ]),
+    ]);
+    $verification = verification();
+    $verification->destination = dedicatedDestination();
+    $verification->destination->metadata['netbank_instruction_mode'] = 'direct_qr';
+
+    expect(app(NetbankFundingProviderAdapter::class)->verifyFunding($verification)->providerTransactionId)
+        ->toBe('transaction-123');
+});
 
 it('verifies a settled incoming credit from authoritative VCA history', function () {
     Http::fake([

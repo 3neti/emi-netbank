@@ -29,6 +29,14 @@ final readonly class NetbankDirectQrFundingInstructionIssuer
         $currency = $this->currency($request->currency);
         $routing = $this->routingProfile($request->destination);
         $reference = $this->numericReference($request->fundingReference);
+        if (array_key_exists('reserved_vca_reference', $request->metadata)) {
+            $reserved = $request->metadata['reserved_vca_reference'];
+            if ($request->destination?->mode !== 'dedicated' || ! is_string($reserved)
+                || ! preg_match('/\A[0-9]{7}\z/', $reserved)) {
+                throw new InvalidArgumentException('A reserved NetBank VCA requires a dedicated account and a seven-digit reference.');
+            }
+            $reference = $reserved;
+        }
         $vcaNumber = $routing['alias'].$reference;
         $issuedAt = DateTimeImmutable::createFromInterface(now());
         $expiresAt = $request->expiresAt ?? $issuedAt->modify('+30 minutes');
@@ -61,6 +69,9 @@ final readonly class NetbankDirectQrFundingInstructionIssuer
                 'delivery' => 'scan-to-pay',
                 'amount_control' => 'qr-embedded',
                 'address_registration' => 'not-requested',
+                'provider_enforced_one_time' => false,
+                'provider_enforced_amount' => false,
+                'provider_enforced_expiry' => false,
             ],
             qrCode: new FundingQrCodeData(
                 mimeType: 'image/png',

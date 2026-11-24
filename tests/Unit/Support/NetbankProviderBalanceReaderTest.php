@@ -144,3 +144,33 @@ it('preserves a sanitized gateway failure code without leaking gateway details',
         ),
     ))->toThrow(ProviderLivePreflightFailed::class, 'dns_resolution_failed');
 });
+
+it('records the fetch time when the provider supplies no balance timestamp', function (): void {
+    config()->set('payment-gateway.netbank.funding.corporate_account_number', 'test-account');
+    $client = Mockery::mock(NetbankFundingApiClient::class);
+    $client->shouldReceive('balance')->once()->andReturn([
+        'balance' => 28800, 'available_balance' => 28800, 'currency' => 'PHP',
+        'as_of' => null, 'fetched_at' => '2026-11-22T03:00:00Z',
+        'raw' => ['balance' => ['cur' => 'PHP']],
+    ]);
+    $observation = (new NetbankProviderBalanceReader($client))->readBalance(new ProviderBalanceRequestData(
+        provider: 'netbank', connectionReference: 'netbank-primary',
+        settlementResourceReference: 'resource:netbank:corporate-vca', currency: 'PHP',
+    ));
+    expect($observation->observedAt->format(DATE_ATOM))->toBe('2026-11-22T03:00:00+00:00');
+});
+
+it('preserves a provider balance timestamp when one is supplied', function (): void {
+    config()->set('payment-gateway.netbank.funding.corporate_account_number', 'test-account');
+    $client = Mockery::mock(NetbankFundingApiClient::class);
+    $client->shouldReceive('balance')->once()->andReturn([
+        'balance' => 28800, 'available_balance' => 28800, 'currency' => 'PHP',
+        'as_of' => '2026-11-06T00:00:00Z', 'fetched_at' => '2026-11-22T03:00:00Z',
+        'raw' => ['balance' => ['cur' => 'PHP']],
+    ]);
+    $observation = (new NetbankProviderBalanceReader($client))->readBalance(new ProviderBalanceRequestData(
+        provider: 'netbank', connectionReference: 'netbank-primary',
+        settlementResourceReference: 'resource:netbank:corporate-vca', currency: 'PHP',
+    ));
+    expect($observation->observedAt->format(DATE_ATOM))->toBe('2026-11-06T00:00:00+00:00');
+});

@@ -59,8 +59,9 @@ it('reads and normalizes authoritative ledger and available balances', function 
         'balance' => 50_000,
         'available_balance' => 45_000,
         'currency' => 'PHP',
-        'as_of' => '2026-07-29T09:30:00+08:00',
+        'as_of' => null,
     ]);
+    expect($balance['fetched_at'])->toBeString()->not->toBe('2026-07-29T09:30:00+08:00');
 });
 
 it('classifies an authentication rejection without retaining provider secrets', function () {

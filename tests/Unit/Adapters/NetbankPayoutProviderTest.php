@@ -7,6 +7,7 @@ use LBHurtado\EmiCore\Contracts\PayoutIdentityRequirementsProvider;
 use LBHurtado\EmiCore\Data\PayoutAddressData;
 use LBHurtado\EmiCore\Data\PayoutPartyData;
 use LBHurtado\EmiCore\Data\PayoutRequestData;
+use LBHurtado\EmiCore\Data\PayoutSourceAccountData;
 use LBHurtado\EmiCore\Enums\PayoutStatus;
 use LBHurtado\PaymentGateway\Adapters\NetbankPayoutProvider;
 use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
@@ -35,6 +36,30 @@ it('passes both resolved parties through the payout adapter', function (): void 
         sender: new PayoutPartyData('sender', 'Issuer', new PayoutAddressData('Issuer locality', 'Manila', 'PH', '1000', 'configured')),
         recipient: new PayoutPartyData('recipient', 'Recipient', new PayoutAddressData('Recipient locality', 'Cebu City', 'PH', '6000', 'ip_assisted_synthetic')),
     ));
+});
+
+it('passes an explicit NetBank payout source without adding it to audit data', function (): void {
+    $wallet = Mockery::mock(Wallet::class);
+    $wallets = Mockery::mock(WalletProxy::class);
+    $wallets->shouldReceive('resolve')->once()->andReturn($wallet);
+    $gateway = Mockery::mock(PaymentGatewayInterface::class);
+    $gateway->shouldReceive('disburse')->once()->with($wallet, Mockery::on(function (DisburseInputData $data): bool {
+        return $data->source_account?->account_number === '991100001234'
+            && $data->source_account?->customer_id === '1234'
+            && ! array_key_exists('source_account', $data->toAuditArray());
+    }))->andReturnFalse();
+    (new NetbankPayoutProvider($gateway, $wallets))->disburse(new PayoutRequestData(
+        'source-ref', 10, '09170000000', 'GXCHPHM2XXX', 'INSTAPAY',
+        source_account: new PayoutSourceAccountData('netbank', '991100001234', '1234'),
+    ));
+});
+
+it('rejects an explicit payout source for another provider before calling the gateway', function (): void {
+    $provider = new NetbankPayoutProvider(Mockery::mock(PaymentGatewayInterface::class), Mockery::mock(WalletProxy::class));
+    expect(fn () => $provider->disburse(new PayoutRequestData(
+        'source-ref', 10, '09170000000', 'GXCHPHM2XXX', 'INSTAPAY',
+        source_account: new PayoutSourceAccountData('other', '991100001234', '1234'),
+    )))->toThrow(InvalidArgumentException::class);
 });
 
 it('omits party identity from the legacy gateway audit payload', function (): void {

@@ -34,6 +34,12 @@ class NetbankPayoutProvider implements PayoutIdentityRequirementsProvider, Payou
 
     public function disburse(PayoutRequestData $request): PayoutResultData
     {
+        if ($request->source_account !== null && ($request->source_account->provider !== 'netbank'
+            || trim($request->source_account->account_number) === ''
+            || trim($request->source_account->customer_id) === '')) {
+            throw new \InvalidArgumentException('The selected payout source is unavailable.');
+        }
+
         $input = DisburseInputData::from([
             'reference' => $request->reference,
             'amount' => $request->amount,
@@ -46,6 +52,7 @@ class NetbankPayoutProvider implements PayoutIdentityRequirementsProvider, Payou
             'mobile' => $request->mobile,
             ...($request->sender === null ? [] : ['sender' => $request->sender->toArray()]),
             ...($request->recipient === null ? [] : ['recipient' => $request->recipient->toArray()]),
+            ...($request->source_account === null ? [] : ['source_account' => $request->source_account->toArray()]),
         ]);
 
         $response = $this->gateway->disburse($this->walletProxy->resolve(), $input);
