@@ -32,6 +32,7 @@ use LBHurtado\EmiCore\Exceptions\ProviderFundingDestinationUnavailable;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingAmbiguous;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingConfigurationException;
 use LBHurtado\PaymentGateway\Exceptions\NetbankFundingNotVerified;
+use LBHurtado\PaymentGateway\Support\NetbankTreasuryConnectionAccountResolver;
 
 class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer, FundingProviderAdapter, IncomingPaymentReader, OnDemandFundingInstructionProvider, ProviderFundingDestinationConfigurator, ProviderFundingDestinationResolver, ProviderFundingHistoryRequestFactory, SpecificIncomingPaymentVerifier
 {
@@ -150,7 +151,11 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
     public function createFundingHistoryRequest(ProviderFundingHistoryRequestData $request): ?FundingVerificationData
     {
         $this->assertProvider($request->provider);
-        $account = trim((string) config('payment-gateway.netbank.funding.corporate_account_number'));
+        $routing = NetbankTreasuryConnectionAccountResolver::resolve(
+            $request->connectionReference,
+            requiresRouting: true,
+        );
+        $account = $routing['account_number'];
         $address = preg_replace('/\D+/', '', $account) ?? '';
         if (strlen($address) < 12) {
             return null;
@@ -164,15 +169,17 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
             fundingAddress: $address,
             destination: new FundingDestinationData(
                 provider: self::Provider,
-                mode: 'shared_corporate_account',
+                mode: $request->connectionReference === 'netbank-primary'
+                    ? 'shared_corporate_account'
+                    : 'dedicated',
                 destinationType: 'bank_account',
                 accountReference: 'treasury-connection:'.$request->connectionReference,
                 displayReference: 'configured-corporate-account',
                 fingerprint: hash('sha256', $account),
                 verificationStatus: 'configured',
                 bankAccountNumber: $account,
-                bankAccountName: trim((string) config('payment-gateway.netbank.funding.corporate_account_name')),
-                routingAlias: trim((string) config('payment-gateway.netbank.funding.vca_alias')),
+                bankAccountName: $routing['account_name'],
+                routingAlias: $routing['alias'],
             ),
             observedAfter: $request->observedAfter,
             observedBefore: $request->observedBefore,

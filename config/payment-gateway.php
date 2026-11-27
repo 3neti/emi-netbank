@@ -29,6 +29,11 @@ return [
             'client_secret' => env('NETBANK_FUNDING_CLIENT_SECRET', env('NETBANK_CLIENT_SECRET')),
             'corporate_account_number' => env('NETBANK_FUNDING_CORPORATE_ACCOUNT_NUMBER', env('NETBANK_SOURCE_ACCOUNT_NUMBER')),
             'corporate_account_name' => env('NETBANK_FUNDING_CORPORATE_ACCOUNT_NAME', env('NETBANK_SOURCE_ACCOUNT_NAME')),
+            'treasury_connection_accounts' => json_decode(
+                (string) env('NETBANK_FUNDING_TREASURY_CONNECTION_ACCOUNTS_JSON', '{}'),
+                true,
+                flags: JSON_THROW_ON_ERROR,
+            ),
             'balance_endpoint' => env(
                 'NETBANK_FUNDING_BALANCE_ENDPOINT',
                 env('NETBANK_BALANCE_ENDPOINT'),

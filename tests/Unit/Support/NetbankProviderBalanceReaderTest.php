@@ -42,6 +42,55 @@ it('uses the authoritative NetBank ledger balance without exposing its account',
         ->not->toContain('9150012345678901');
 });
 
+it('uses the account configured for a dedicated Treasury connection', function (): void {
+    config()->set('payment-gateway.netbank.funding.corporate_account_number', 'shared-account');
+    config()->set('payment-gateway.netbank.funding.treasury_connection_accounts', [
+        'netbank-dedicated-secondary' => [
+            'account_number' => 'dedicated-account',
+            'account_name' => 'Dedicated Treasury',
+            'vca_alias' => '89628',
+        ],
+    ]);
+    $client = Mockery::mock(NetbankFundingApiClient::class);
+    $client->shouldReceive('balance')->once()->with('dedicated-account')->andReturn([
+        'balance' => 20_901,
+        'available_balance' => 20_901,
+        'currency' => 'PHP',
+        'as_of' => '2026-11-27T06:54:15Z',
+        'raw' => ['balance' => ['cur' => 'PHP']],
+    ]);
+
+    $observation = (new NetbankProviderBalanceReader($client))->readBalance(
+        new ProviderBalanceRequestData(
+            provider: 'netbank',
+            connectionReference: 'netbank-dedicated-secondary',
+            settlementResourceReference: 'resource:netbank:dedicated:secondary',
+            currency: 'PHP',
+        ),
+    );
+
+    expect($observation->amountMinor)->toBe(20_901)
+        ->and($observation->connectionReference)->toBe('netbank-dedicated-secondary');
+});
+
+it('refuses to read a dedicated Treasury connection through the shared account', function (): void {
+    config()->set('payment-gateway.netbank.funding.corporate_account_number', 'shared-account');
+    config()->set('payment-gateway.netbank.funding.treasury_connection_accounts', []);
+    $client = Mockery::mock(NetbankFundingApiClient::class);
+
+    expect(fn (): mixed => (new NetbankProviderBalanceReader($client))->readBalance(
+        new ProviderBalanceRequestData(
+            provider: 'netbank',
+            connectionReference: 'netbank-dedicated-secondary',
+            settlementResourceReference: 'resource:netbank:dedicated:secondary',
+            currency: 'PHP',
+        ),
+    ))->toThrow(
+        RuntimeException::class,
+        'netbank-dedicated-secondary] has no configured account',
+    );
+});
+
 it('rejects an invalid ledger balance even when available liquidity is valid', function () {
     config()->set(
         'payment-gateway.netbank.funding.corporate_account_number',

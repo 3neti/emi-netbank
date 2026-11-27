@@ -50,6 +50,7 @@ final class NetbankDeploymentContributor implements DeploymentConnectionContribu
             $this->variable('NETBANK_FUNDING_CLIENT_SECRET', 'Optional NetBank funding OAuth client secret override.', 'payment-gateway.netbank.funding.client_secret', secret: true, required: false),
             $this->variable('NETBANK_FUNDING_CORPORATE_ACCOUNT_NUMBER', 'Optional NetBank corporate settlement account override.', 'payment-gateway.netbank.funding.corporate_account_number', secret: true, required: false),
             $this->variable('NETBANK_FUNDING_CORPORATE_ACCOUNT_NAME', 'NetBank corporate settlement account display name.', 'payment-gateway.netbank.funding.corporate_account_name', 'X Change Treasury'),
+            $this->variable('NETBANK_FUNDING_TREASURY_CONNECTION_ACCOUNTS_JSON', 'Named NetBank account mapping for additional Treasury connections.', 'payment-gateway.netbank.funding.treasury_connection_accounts', secret: true, required: false),
             $this->variable('NETBANK_FUNDING_BALANCE_ENDPOINT', 'Optional NetBank funding balance endpoint override.', 'payment-gateway.netbank.funding.balance_endpoint', required: false),
             $this->variable('NETBANK_FUNDING_VCA_ALIAS', 'Optional NetBank funding VCA alias override.', 'payment-gateway.netbank.funding.vca_alias', secret: true, required: false),
             $this->variable('NETBANK_FUNDING_QR_ENDPOINT', 'Optional NetBank QR Ph generation endpoint override.', 'payment-gateway.netbank.funding.qr_endpoint', 'https://api.netbank.ph/v1/qrph/generate', required: false),
