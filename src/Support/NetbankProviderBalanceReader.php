@@ -13,7 +13,6 @@ use LBHurtado\EmiCore\Enums\ProviderLivePreflightFailureCode;
 use LBHurtado\EmiCore\Exceptions\ProviderLivePreflightFailed;
 use LBHurtado\PaymentGateway\Exceptions\NetbankBalanceReadException;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingApiClient;
-use RuntimeException;
 use Throwable;
 
 final readonly class NetbankProviderBalanceReader implements ProviderBalanceReader
@@ -36,9 +35,9 @@ final readonly class NetbankProviderBalanceReader implements ProviderBalanceRead
             throw new InvalidArgumentException('NetBank balance provider mismatch.');
         }
 
-        $accountNumber = trim((string) config(
-            'payment-gateway.netbank.funding.corporate_account_number',
-        ));
+        $accountNumber = NetbankTreasuryConnectionAccountResolver::resolve(
+            $request->connectionReference,
+        )['account_number'];
 
         if ($accountNumber === '') {
             throw new RuntimeException('NetBank corporate account is not configured.');

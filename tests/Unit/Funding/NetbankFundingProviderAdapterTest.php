@@ -138,6 +138,32 @@ it('creates a provider funding-history request from the configured destination',
     expect($adapter->createFundingHistoryRequest($request))->toBeNull();
 });
 
+it('creates a provider funding-history request from the dedicated Treasury connection account', function (): void {
+    config()->set('payment-gateway.netbank.funding.treasury_connection_accounts', [
+        'netbank-dedicated-secondary' => [
+            'account_number' => '113-001-00006-8',
+            'account_name' => 'Dedicated Treasury',
+            'vca_alias' => '89628',
+        ],
+    ]);
+    $request = new ProviderFundingHistoryRequestData(
+        provider: 'netbank',
+        reference: 'funding-request:dedicated',
+        connectionReference: 'netbank-dedicated-secondary',
+        expectedAmountMinor: 5000,
+        currency: 'PHP',
+        observedAfter: new DateTimeImmutable('2026-07-23T00:00:00Z'),
+        observedBefore: new DateTimeImmutable('2026-07-23T01:00:00Z'),
+    );
+
+    $verification = app(NetbankFundingProviderAdapter::class)->createFundingHistoryRequest($request);
+
+    expect($verification?->fundingAddress)->toBe('113001000068')
+        ->and($verification?->destination?->bankAccountNumber)->toBe('113-001-00006-8')
+        ->and($verification?->destination?->routingAlias)->toBe('89628')
+        ->and($verification?->destination?->mode)->toBe('dedicated');
+});
+
 it('registers the provider provisioning profile and preserves legacy references', function () {
     $profile = app(NetbankProvisioningProfile::class);
 
