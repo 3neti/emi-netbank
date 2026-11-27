@@ -38,6 +38,7 @@
         "3neti/laravel-model-channel": "^1.1",
         "3neti/wallet": "^1.0 || ^2.0@beta",
         "3neti/money-issuer": "^1.1",
+        "khanamiryan/qrcode-detector-decoder": "^2.0",
         "propaganistas/laravel-phone": "^6.0",
         "league/omnipay": "^3.2",
         "omnipay/common": "^3.1",

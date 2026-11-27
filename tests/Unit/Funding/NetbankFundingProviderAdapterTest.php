@@ -322,6 +322,7 @@ it('creates deterministic exact one-time VCA funding instructions', function () 
         ->and($instructions->qrCode?->transactionType)->toBe('p2m')
         ->and($instructions->qrCode?->embeddedAmount)->toBeTrue()
         ->and($instructions->qrCode?->providerGenerated)->toBeTrue()
+        ->and($instructions->qrCode?->displayContent)->toBeNull()
         ->and($instructions->displayData)->toMatchArray([
             'institution' => 'NetBank',
             'account_name' => 'X Change Treasury',

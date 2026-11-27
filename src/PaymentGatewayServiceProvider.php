@@ -17,7 +17,9 @@ use LBHurtado\PaymentGateway\Console\Commands\TestDisbursementCommand;
 use LBHurtado\PaymentGateway\Console\Commands\TestGCashMemoCommand;
 use LBHurtado\PaymentGateway\Contracts\PaymentGatewayInterface;
 use LBHurtado\PaymentGateway\Contracts\WalletProxy;
+use LBHurtado\PaymentGateway\Funding\NetbankFundingQrDecoder;
 use LBHurtado\PaymentGateway\Funding\NetbankFundingProviderAdapter;
+use LBHurtado\PaymentGateway\Funding\NetbankQrImageDecoder;
 use LBHurtado\PaymentGateway\Funding\NetbankReusableFundingAddressProvider;
 use LBHurtado\PaymentGateway\Gateways\Netbank\NetbankPaymentGateway;
 use LBHurtado\PaymentGateway\Gateways\Omnipay\OmnipayPaymentGateway;
@@ -70,6 +72,9 @@ class PaymentGatewayServiceProvider extends ServiceProvider
         $this->app->singleton(NetbankFundingProviderAdapter::class);
         $this->app->tag(NetbankFundingProviderAdapter::class, 'emi.funding-provider-adapters');
         $this->app->tag(NetbankFundingProviderAdapter::class, 'emi.funding-destination-resolvers');
+        $this->app->singleton(NetbankQrImageDecoder::class);
+        $this->app->singleton(NetbankFundingQrDecoder::class);
+        $this->app->tag(NetbankFundingQrDecoder::class, 'emi.funding-qr-decoders');
         $this->app->singleton(NetbankReusableFundingAddressProvider::class);
         $this->app->booting(function ($app): void {
             foreach ($app->tagged('emi.standing-funding-address-providers') as $provider) {

@@ -65,11 +65,16 @@ return [
                 'NETBANK_FUNDING_QR_ENDPOINT',
                 env('NETBANK_QR_ENDPOINT', 'https://api.netbank.ph/v1/qrph/generate')
             ),
+            'qr_decode_endpoint' => env(
+                'NETBANK_FUNDING_QR_DECODE_ENDPOINT',
+                '/v1/qrph/decode',
+            ),
             'qr_merchant_name' => env('NETBANK_FUNDING_QR_MERCHANT_NAME', 'X Change'),
             'qr_merchant_city' => env('NETBANK_FUNDING_QR_MERCHANT_CITY', 'Manila'),
             'qr_merchant_name_max_length' => (int) env('NETBANK_FUNDING_QR_MERCHANT_NAME_MAX_LENGTH', 25),
             'qr_merchant_city_max_length' => (int) env('NETBANK_FUNDING_QR_MERCHANT_CITY_MAX_LENGTH', 15),
             'qr_resolution' => env('NETBANK_FUNDING_QR_RESOLUTION', 480),
+            'qr_decode_max_bytes' => (int) env('NETBANK_FUNDING_QR_DECODE_MAX_BYTES', 5 * 1024 * 1024),
             'pre_transaction_validation_enabled' => env('NETBANK_FUNDING_PRE_TRANSACTION_VALIDATION_ENABLED', true),
             'exact_limits_enabled' => env('NETBANK_FUNDING_EXACT_LIMITS_ENABLED', true),
             'connect_timeout_seconds' => env('NETBANK_FUNDING_CONNECT_TIMEOUT_SECONDS', 5),

@@ -123,6 +123,31 @@ class NetbankFundingApiClient
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function decodeQrString(string $qrString): array
+    {
+        $qrString = trim($qrString);
+
+        if ($qrString === '' || mb_strlen($qrString) > 4096) {
+            throw NetbankFundingRequestFailed::invalidResponse('decode-qrph');
+        }
+
+        $response = $this->api()->get(
+            $this->requiredConfig('qr_decode_endpoint'),
+            ['qr_string' => $qrString],
+        );
+        $this->assertSuccessful($response, 'decode-qrph');
+        $payload = $response->json();
+
+        if (! is_array($payload)) {
+            throw NetbankFundingRequestFailed::invalidResponse('decode-qrph');
+        }
+
+        return $payload;
+    }
+
+    /**
      * @return array{balance: int, available_balance: int, currency: string, as_of: ?string, raw: array<string, mixed>}
      */
     public function balance(string $accountNumber): array
