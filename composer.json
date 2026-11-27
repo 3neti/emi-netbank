@@ -29,7 +29,7 @@
     },
     "require": {
         "php": "^8.2",
-        "3neti/emi-core": "^2.4.0",
+        "3neti/emi-core": "^2.5.0",
         "spatie/laravel-data": "^4.15",
         "laravel/sanctum": "^4.0",
         "lorisleiva/laravel-actions": "^2.9",
@@ -38,6 +38,7 @@
         "3neti/laravel-model-channel": "^1.1",
         "3neti/wallet": "^1.0 || ^2.0@beta",
         "3neti/money-issuer": "^1.1",
+        "khanamiryan/qrcode-detector-decoder": "^2.0",
         "propaganistas/laravel-phone": "^6.0",
         "league/omnipay": "^3.2",
         "omnipay/common": "^3.1",

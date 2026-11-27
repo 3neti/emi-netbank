@@ -12,6 +12,25 @@ to NetBank payout, funding, QR Ph, transaction-history, and balance APIs.
 - Exact-amount and reusable QR Ph funding instructions
 - Live-readiness checks that distinguish configuration from provider access
 
+### QR artifact contract
+
+NetBank's documented QR Ph generation response returns `qr_code` as a
+Base64-encoded PNG. The adapter validates and passes that artifact through
+`FundingQrCodeData::base64Payload`; consumers convert it to an image for
+display. NetBank's `qr_string` is an input to the separate QR decode endpoint,
+not a generated funding-QR response field.
+
+Accordingly, the adapter leaves the optional
+`FundingQrCodeData::displayContent` field `null`. It must only be populated
+after NetBank documents a separate machine-readable response value and its
+explicit format. The adapter never decodes the PNG or manufactures a URL.
+
+Authorized callers may use the registered `FundingQrCodeDecoder` capability
+on demand. The adapter decodes the stored PNG in bounded temporary storage,
+submits the resulting `qr_string` to NetBank's `/v1/qrph/decode` endpoint, and
+returns the string together with NetBank's decoded response. This operation is
+not performed during QR generation and its raw values must not be logged.
+
 ## Installation
 
 ```bash

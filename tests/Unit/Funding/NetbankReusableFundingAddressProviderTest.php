@@ -90,7 +90,8 @@ it('creates a stable open-amount static NetBank QR without registering or limiti
         ->and($first->qrCode->qrMode)->toBe('static')
         ->and($first->qrCode->transactionType)->toBe('p2m')
         ->and($first->qrCode->embeddedAmount)->toBeFalse()
-        ->and($first->qrCode->providerGenerated)->toBeTrue();
+        ->and($first->qrCode->providerGenerated)->toBeTrue()
+        ->and($first->qrCode->displayContent)->toBeNull();
 
     Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.netbank.test/v1/qrph/generate'
         && $request->data() === [
