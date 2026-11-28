@@ -73,6 +73,36 @@ it('uses the account configured for a dedicated Treasury connection', function (
         ->and($observation->connectionReference)->toBe('netbank-dedicated-secondary');
 });
 
+it('keeps the primary Treasury connection on its shared-account fallback when dedicated accounts are configured', function (): void {
+    config()->set('payment-gateway.netbank.funding.corporate_account_number', 'shared-account');
+    config()->set('payment-gateway.netbank.funding.treasury_connection_accounts', [
+        'netbank-dedicated-secondary' => [
+            'account_number' => 'dedicated-account',
+            'account_name' => 'Dedicated Treasury',
+            'vca_alias' => '89628',
+        ],
+    ]);
+    $client = Mockery::mock(NetbankFundingApiClient::class);
+    $client->shouldReceive('balance')->once()->with('shared-account')->andReturn([
+        'balance' => 45_779,
+        'available_balance' => 45_779,
+        'currency' => 'PHP',
+        'as_of' => '2026-11-28T11:43:39Z',
+        'raw' => ['balance' => ['cur' => 'PHP']],
+    ]);
+
+    $observation = (new NetbankProviderBalanceReader($client))->readBalance(
+        new ProviderBalanceRequestData(
+            provider: 'netbank',
+            connectionReference: 'netbank-primary',
+            settlementResourceReference: 'resource:netbank:corporate-vca',
+            currency: 'PHP',
+        ),
+    );
+
+    expect($observation->connectionReference)->toBe('netbank-primary');
+});
+
 it('refuses to read a dedicated Treasury connection through the shared account', function (): void {
     config()->set('payment-gateway.netbank.funding.corporate_account_number', 'shared-account');
     config()->set('payment-gateway.netbank.funding.treasury_connection_accounts', []);
