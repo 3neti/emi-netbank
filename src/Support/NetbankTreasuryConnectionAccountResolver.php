@@ -36,8 +36,8 @@ final class NetbankTreasuryConnectionAccountResolver
         }
 
         if (
-            $configuredAccounts !== []
-            || str_starts_with($connectionReference, 'netbank-dedicated-')
+            str_starts_with($connectionReference, 'netbank-dedicated-')
+            || ($configuredAccounts !== [] && $connectionReference !== 'netbank-primary')
         ) {
             throw new RuntimeException(
                 "NetBank Treasury connection [{$connectionReference}] has no configured account.",
