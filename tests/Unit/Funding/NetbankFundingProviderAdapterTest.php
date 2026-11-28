@@ -67,6 +67,13 @@ beforeEach(function () {
         'exact_limits_enabled' => true,
         'timeout_seconds' => 5,
         'verification_lookback_days' => 7,
+        'account_transactions_endpoint' => '/v1/accounts/{account_number}/transactions',
+        'account_history' => [
+            'page_limit' => 100,
+            'maximum_pages' => 10,
+            'maximum_rows' => 1_000,
+            'maximum_range_days' => 31,
+        ],
         'webhook' => [
             'allowed_ips' => ['3.0.84.126', '52.74.254.158'],
             'expected_content_type' => 'text/plain;charset=ISO-8859-1',
@@ -162,6 +169,49 @@ it('creates a provider funding-history request from the dedicated Treasury conne
         ->and($verification?->destination?->bankAccountNumber)->toBe('113-001-00006-8')
         ->and($verification?->destination?->routingAlias)->toBe('89628')
         ->and($verification?->destination?->mode)->toBe('dedicated');
+});
+
+it('verifies a bank transfer through the bounded corporate account history', function (): void {
+    Http::fake([
+        'https://auth.netbank.test/oauth2/token' => Http::response([
+            'access_token' => 'access-token',
+            'expires_in' => 3600,
+        ]),
+        'https://api.netbank.test/v1/accounts/113001000019/transactions*' => Http::response([
+            'result' => [[
+                'transaction_id' => 'bank-transfer-10415',
+                'type' => 'Credit',
+                'amount' => ['cur' => 'PHP', 'num' => '10415'],
+                'status' => 'Settled',
+                'date' => '2026-07-23T01:05:00.000Z',
+                'settlement_rail' => 'INSTAPAY',
+            ]],
+        ]),
+    ]);
+    $request = new ProviderFundingHistoryRequestData(
+        provider: 'netbank',
+        reference: 'funding-request:bank-transfer',
+        connectionReference: 'primary',
+        expectedAmountMinor: 10_415,
+        currency: 'PHP',
+        observedAfter: new DateTimeImmutable('2026-07-23T01:00:00Z'),
+        observedBefore: new DateTimeImmutable('2026-07-23T01:10:00Z'),
+    );
+    $verification = app(NetbankFundingProviderAdapter::class)
+        ->createFundingHistoryRequest($request);
+    $observation = app(NetbankFundingProviderAdapter::class)
+        ->verifyFunding($verification);
+
+    expect($observation->providerTransactionId)->toBe('bank-transfer-10415')
+        ->and($observation->verificationSource)->toBe('netbank-corporate-account-transaction-history')
+        ->and($observation->netAmountMinor)->toBe(10_415)
+        ->and($observation->metadata['destination_verified'])->toBeTrue()
+        ->and($observation->metadata['verification_path'])->toBe('corporate_account');
+    Http::assertSent(fn (Request $request): bool => str_starts_with(
+        $request->url(),
+        'https://api.netbank.test/v1/accounts/113001000019/transactions?',
+    ) && $request->data()['start_date'] === '2026-07-23'
+        && $request->data()['end_date'] === '2026-07-24');
 });
 
 it('registers the provider provisioning profile and preserves legacy references', function () {

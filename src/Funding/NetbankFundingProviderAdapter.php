@@ -180,6 +180,7 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
                 bankAccountNumber: $account,
                 bankAccountName: $routing['account_name'],
                 routingAlias: $routing['alias'],
+                metadata: ['netbank_history_mode' => 'corporate_account'],
             ),
             observedAfter: $request->observedAfter,
             observedBefore: $request->observedBefore,
@@ -314,6 +315,15 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
 
     public function verifyFunding(FundingVerificationData $verification): ProviderFundingObservationData
     {
+        $fundingAddressDigits = preg_replace('/\D+/', '', (string) $verification->fundingAddress) ?? '';
+
+        if (data_get($verification->destination?->metadata, 'netbank_history_mode') === 'corporate_account') {
+            return $this->verifyFundingFromCorporateAccount(
+                $verification,
+                $fundingAddressDigits,
+            );
+        }
+
         try {
             return $this->verifyFundingFromAddress($verification);
         } catch (NetbankFundingNotVerified $exception) {
@@ -340,6 +350,66 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
 
             return $observation;
         }
+    }
+
+    private function verifyFundingFromCorporateAccount(
+        FundingVerificationData $verification,
+        string $fundingAddressDigits,
+    ): ProviderFundingObservationData {
+        $this->assertProvider($verification->provider);
+        $this->assertPositiveAmount($verification->expectedAmountMinor);
+
+        $routing = $this->routingProfile($verification->destination);
+        $routingDigits = preg_replace('/\D+/', '', $routing['account_number']) ?? '';
+
+        if ($fundingAddressDigits === '' || ! hash_equals($routingDigits, $fundingAddressDigits)) {
+            throw new InvalidArgumentException('The NetBank corporate account does not match the configured funding destination.');
+        }
+
+        if ($verification->observedAfter === null || $verification->observedBefore === null) {
+            throw new InvalidArgumentException('NetBank corporate-account history requires a bounded observation window.');
+        }
+
+        $historyStart = $verification->observedAfter->setTime(0, 0);
+        $historyEnd = $verification->observedBefore->setTime(0, 0)->modify('+1 day');
+        $incoming = array_values(array_filter(
+            iterator_to_array($this->client->accountTransactions(
+                $routing['account_number'],
+                $historyStart,
+                $historyEnd,
+            )),
+            fn (array $transaction): bool => $this->isCorporateIncomingCredit($transaction)
+                && $this->isInsideVerificationWindow($transaction, $verification),
+        ));
+
+        if ($incoming === []) {
+            throw NetbankFundingNotVerified::noIncomingTransaction();
+        }
+
+        $exact = array_values(array_filter(
+            $incoming,
+            fn (array $transaction): bool => $this->amountMinor($transaction) === $verification->expectedAmountMinor
+                && $this->transactionCurrency($transaction) === $this->currency($verification->currency),
+        ));
+
+        $transaction = match (true) {
+            count($exact) === 1 => $exact[0],
+            count($exact) > 1 => throw NetbankFundingAmbiguous::multipleTransactions(),
+            count($incoming) === 1 => $incoming[0],
+            default => throw NetbankFundingAmbiguous::multipleTransactions(),
+        };
+
+        return $this->observationFromTransaction(
+            transaction: $transaction,
+            verification: $verification,
+            fundingAddress: $routingDigits,
+            routing: $routing,
+            verificationSource: 'netbank-corporate-account-transaction-history',
+            metadata: [
+                'destination_verified' => true,
+                'verification_path' => 'corporate_account',
+            ],
+        );
     }
 
     public function verifyIncomingPayment(FundingVerificationData $verification, string $providerTransactionId): ProviderFundingObservationData
@@ -408,12 +478,36 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
             default => throw NetbankFundingAmbiguous::multipleTransactions(),
         };
 
+        return $this->observationFromTransaction(
+            transaction: $transaction,
+            verification: $verification,
+            fundingAddress: $vcaNumber,
+            routing: $routing,
+            verificationSource: 'netbank-vca-transaction-history',
+            metadata: [
+                'destination_verified' => true,
+                ...(data_get($verification->destination?->metadata, 'require_exact_vca') === true
+                    ? ['exact_vca_verified' => true] : []),
+            ],
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $transaction
+     * @param  array{account_number: string, account_name: string, alias: string}  $routing
+     * @param  array<string, mixed>  $metadata
+     */
+    private function observationFromTransaction(
+        array $transaction,
+        FundingVerificationData $verification,
+        string $fundingAddress,
+        array $routing,
+        string $verificationSource,
+        array $metadata,
+    ): ProviderFundingObservationData {
         $grossAmountMinor = $this->amountMinor($transaction);
         $transactionCurrency = $this->transactionCurrency($transaction);
-        $reportedFeeAmountMinor = $this->feeAmountMinor(
-            $transaction,
-            $transactionCurrency,
-        );
+        $reportedFeeAmountMinor = $this->feeAmountMinor($transaction, $transactionCurrency);
         $feeMirrorsGrossAmount = $reportedFeeAmountMinor === $grossAmountMinor;
         $feeAmountMinor = $feeMirrorsGrossAmount ? 0 : $reportedFeeAmountMinor;
 
@@ -434,11 +528,11 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
             netAmountMinor: $grossAmountMinor - $feeAmountMinor,
             currency: $transactionCurrency,
             providerStatus: strtolower($this->requiredTransactionValue($transaction, 'status')),
-            verificationSource: 'netbank-vca-transaction-history',
+            verificationSource: $verificationSource,
             payloadHash: $payloadHash,
             providerOperationId: $this->optionalString(data_get($transaction, 'operation_id')),
             requestId: $this->optionalString(data_get($transaction, 'reference_id')),
-            fundingAddress: 'sha256:'.hash('sha256', $vcaNumber),
+            fundingAddress: 'sha256:'.hash('sha256', $fundingAddress),
             providerAccountReference: 'sha256:'.hash('sha256', $routing['account_number']),
             occurredAt: $this->optionalDate(data_get($transaction, 'date')),
             settledAt: $this->settledAt($transaction),
@@ -447,11 +541,9 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
                 'description' => $this->optionalString(data_get($transaction, 'description')),
                 'type' => $this->optionalString(data_get($transaction, 'type')),
                 'settlement_rail' => $this->optionalString(data_get($transaction, 'settlement_rail')),
-                'destination_verified' => true,
-                ...(data_get($verification->destination?->metadata, 'require_exact_vca') === true
-                    ? ['exact_vca_verified' => true] : []),
+                ...$metadata,
                 'expected_amount_matches' => $grossAmountMinor === $verification->expectedAmountMinor,
-                'expected_currency_matches' => $transactionCurrency === $currency,
+                'expected_currency_matches' => $transactionCurrency === $this->currency($verification->currency),
                 'normalization_version' => 'netbank-incoming-credit-v3',
                 'reported_fee_mirrors_gross_amount' => $feeMirrorsGrossAmount,
             ],
@@ -670,6 +762,13 @@ class NetbankFundingProviderAdapter implements DirectQrFundingInstructionIssuer,
             && strcasecmp((string) data_get($transaction, 'description'), 'EXTERNAL_TRANSFER_INCOMING') === 0
             && ((! $requireExactVca && $destinationAlias === null)
                 || ($destinationAlias !== null && hash_equals($vcaNumber, $destinationAlias)));
+    }
+
+    /** @param  array<string, mixed>  $transaction */
+    private function isCorporateIncomingCredit(array $transaction): bool
+    {
+        return strcasecmp((string) data_get($transaction, 'type'), 'Credit') === 0
+            && strcasecmp((string) data_get($transaction, 'status'), 'Settled') === 0;
     }
 
     private function amountMinor(array $transaction): int
