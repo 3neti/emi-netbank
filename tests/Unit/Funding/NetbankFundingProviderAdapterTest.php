@@ -171,18 +171,19 @@ it('creates a provider funding-history request from the dedicated Treasury conne
         ->and($verification?->destination?->mode)->toBe('dedicated');
 });
 
-it('verifies a bank transfer through the bounded corporate account history', function (): void {
+it('verifies a bank transfer through the bounded VCA history', function (): void {
     Http::fake([
         'https://auth.netbank.test/oauth2/token' => Http::response([
             'access_token' => 'access-token',
             'expires_in' => 3600,
         ]),
-        'https://api.netbank.test/v1/accounts/113001000019/transactions*' => Http::response([
-            'result' => [[
+        'https://api.netbank.test/v1/vca/113001000019/transactions*' => Http::response([
+            'transactions' => [[
                 'transaction_id' => 'bank-transfer-10415',
                 'type' => 'Credit',
                 'amount' => ['cur' => 'PHP', 'num' => '10415'],
                 'status' => 'Settled',
+                'description' => 'EXTERNAL_TRANSFER_INCOMING',
                 'date' => '2026-07-23T01:05:00.000Z',
                 'settlement_rail' => 'INSTAPAY',
             ]],
@@ -203,15 +204,14 @@ it('verifies a bank transfer through the bounded corporate account history', fun
         ->verifyFunding($verification);
 
     expect($observation->providerTransactionId)->toBe('bank-transfer-10415')
-        ->and($observation->verificationSource)->toBe('netbank-corporate-account-transaction-history')
+        ->and($observation->verificationSource)->toBe('netbank-vca-transaction-history')
         ->and($observation->netAmountMinor)->toBe(10_415)
         ->and($observation->metadata['destination_verified'])->toBeTrue()
-        ->and($observation->metadata['verification_path'])->toBe('corporate_account');
+        ->and($observation->metadata)->not->toHaveKey('verification_path');
     Http::assertSent(fn (Request $request): bool => str_starts_with(
         $request->url(),
-        'https://api.netbank.test/v1/accounts/113001000019/transactions?',
-    ) && $request->data()['start_date'] === '2026-07-23'
-        && $request->data()['end_date'] === '2026-07-24');
+        'https://api.netbank.test/v1/vca/113001000019/transactions?',
+    ) && $request->data()['account_number'] === '113001000019');
 });
 
 it('registers the provider provisioning profile and preserves legacy references', function () {
